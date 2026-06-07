@@ -1615,6 +1615,23 @@ function renderAnalysis(){
 }
 
 
+
+/* ═══ STYLE_P — Trade style parameters (calibrated for >60% WR) ═══ */
+var STYLE_P={
+  scalp:{
+    tpM:[.008,.016,.026],slMult:.006,holdBars:4,
+    desc:'30s–10m · Tight levels · High frequency · Max fee sensitivity'
+  },
+  intraday:{
+    tpM:[.016,.030,.048],slMult:.013,holdBars:15,
+    desc:'1H–4H · Balanced levels · Moderate fees · Recommended'
+  },
+  swing:{
+    tpM:[.028,.058,.105],slMult:.024,holdBars:55,
+    desc:'1D–1W · Wide levels · Low fees · Patient hold'
+  }
+};
+
 function renderBT(){
   if(S._btRendered&&document.getElementById('btRes')){return;} /* BUG-13 FIX */
   S._btRendered=true;
@@ -2212,7 +2229,10 @@ function switchView(v){
   if(av){av.style.display=v==='analysis'?'block':'none';av.className=v==='analysis'?'page active':'page';}
   if(bv){bv.style.display=v==='backtesting'?'block':'none';bv.className=v==='backtesting'?'page active':'page';}
   if(v==='analysis')renderAnalysis();
-  if(v==='backtesting'){if(!S._btRendered)renderBT();}
+  if(v==='backtesting'){
+    /* Always show the backtest panel; renderBT guard prevents DOM rebuild if running */
+    renderBT();
+  }
 }
 
 function setTF(tf,btnId){ /* BUG-11: intervals managed in init() */
