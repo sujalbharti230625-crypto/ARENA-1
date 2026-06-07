@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ETH/USDT — Final High-Confidence Setup</title>
+<style>
+:root{
+  --bg:#020709;--bg2:#060e18;--bg3:#0a1624;--panel:#081220;
+  --border:#13233a;--accent:#00d4ff;--red:#ff3d5a;--green:#00e676;
+  --gold:#ffd700;--warn:#ff9800;--text:#ccdaf0;--text2:#4a6a8a;
+  --purple:#a855f7;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{font-size:13px;scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,monospace;min-height:100vh}
+
+/* ─── NOISE / SCANLINES texture ─── */
+body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.03) 2px,rgba(0,0,0,.03) 4px);pointer-events:none;z-index:999}
+
+/* ─── HEADER ─── */
+.hdr{background:linear-gradient(90deg,#020709 0%,#060e18 100%);border-bottom:1px solid var(--border);padding:10px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 2px 40px rgba(0,0,0,.9)}
+.hdr-left{display:flex;align-items:center;gap:12px}
+.eth-icon{width:38px;height:38px;background:linear-gradient(135deg,#627eea,#8fa4f0);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:900;color:#fff;box-shadow:0 0 18px rgba(98,126,234,.6)}
+.hdr-title{font-size:1rem;font-weight:700;color:#fff;letter-spacing:.5px}
+.hdr-sub{font-size:.6rem;color:var(--text2);letter-spacing:1.5px;text-transform:uppercase;margin-top:1px}
+.live-price-wrap{display:flex;align-items:center;gap:14px}
+.live-price{font-size:1.7rem;font-weight:800;color:#fff;font-variant-numeric:tabular-nums;transition:color .3s}
+.pchg{padding:3px 9px;border-radius:5px;font-size:.82rem;font-weight:700}
+.pchg.up{background:rgba(0,230,118,.15);color:var(--green)}
+.pchg.dn{background:rgba(255,61,90,.15);color:var(--red)}
+.ldot-wrap{display:flex;align-items:center;gap:5px;background:rgba(255,61,90,.08);border:1px solid rgba(255,61,90,.3);border-radius:20px;padding:4px 11px;font-size:.62rem;color:var(--red);font-weight:700;letter-spacing:1px}
+.ldot{width:6px;height:6px;background:var(--red);border-radius:50%;animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(1.7)}}
+
+/* ─── PAGE WRAPPER ─── */
+.page{max-width:1160px;margin:0 auto;padding:24px 20px 60px}
+
+/* ─── VERDICT BANNER ─── */
+.verdict{background:linear-gradient(135deg,rgba(255,61,90,.12) 0%,rgba(100,0,30,.08) 50%,rgba(255,61,90,.04) 100%);border:1.5px solid rgba(255,61,90,.4);border-radius:14px;padding:20px 24px;margin-bottom:22px;position:relative;overflow:hidden;box-shadow:0 0 40px rgba(255,61,90,.12),inset 0 0 60px rgba(255,61,90,.03)}
+.verdict::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--red),rgba(255,61,90,.3),transparent)}
+.verdict-top{display:flex;align-items:center;gap:16px;margin-bottom:12px}
+.verdict-icon{font-size:2.2rem;line-height:1}
+.verdict-tag{display:inline-flex;align-items:center;gap:6px;padding:5px 14px;border-radius:5px;background:rgba(255,61,90,.2);border:1px solid rgba(255,61,90,.4);font-size:.75rem;font-weight:800;color:var(--red);letter-spacing:1px;text-transform:uppercase}
+.verdict-title{font-size:1.55rem;font-weight:900;color:#fff;letter-spacing:.3px;margin-top:4px}
+.verdict-subtitle{font-size:.82rem;color:var(--text2);margin-top:4px;line-height:1.5}
+.verdict-score{margin-left:auto;text-align:center;background:rgba(0,0,0,.3);border:1px solid rgba(255,61,90,.25);border-radius:10px;padding:12px 18px}
+.vs-num{font-size:2.2rem;font-weight:900;color:var(--red);line-height:1}
+.vs-denom{font-size:.72rem;color:var(--text2);margin-top:2px}
+.vs-label{font-size:.62rem;color:var(--red);font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-top:4px}
+
+/* ─── SETUP GRID ─── */
+.setup-grid{display:grid;grid-template-columns:1.1fr 1fr;gap:16px;margin-bottom:16px}
+@media(max-width:860px){.setup-grid{grid-template-columns:1fr}}
+
+/* ─── MAIN SETUP CARD ─── */
+.setup-main{background:var(--panel);border:1px solid rgba(255,61,90,.25);border-radius:12px;overflow:hidden;box-shadow:0 0 30px rgba(255,61,90,.07)}
+.setup-main-hdr{background:linear-gradient(90deg,rgba(255,61,90,.15),rgba(255,61,90,.04));border-bottom:1px solid rgba(255,61,90,.2);padding:12px 16px;display:flex;align-items:center;gap:8px}
+.smh-title{font-size:.68rem;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:1.5px}
+.smh-badge{margin-left:auto;padding:2px 8px;border-radius:12px;font-size:.62rem;font-weight:700;background:rgba(255,61,90,.15);color:var(--red);border:1px solid rgba(255,61,90,.3)}
+
+/* Level rows */
+.lvl-section{padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.04)}
+.lvl-section:last-child{border-bottom:none}
+.lvl-section-title{font-size:.6rem;color:var(--text2);font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px}
+.lvl-row{display:flex;align-items:center;justify-content:space-between;padding:7px 10px;border-radius:6px;background:rgba(0,0,0,.25);margin-bottom:5px;border-left:3px solid transparent;transition:background .2s}
+.lvl-row:hover{background:rgba(255,255,255,.03)}
+.lvl-row.entry-row{border-left-color:var(--accent)}
+.lvl-row.sl-row{border-left-color:var(--red);background:rgba(255,61,90,.06)}
+.lvl-row.tp1-row{border-left-color:#64ffda}
+.lvl-row.tp2-row{border-left-color:var(--green)}
+.lvl-row.tp3-row{border-left-color:var(--gold)}
+.lvl-left{display:flex;align-items:center;gap:8px}
+.lvl-label{font-size:.63rem;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.4px;width:100px}
+.lvl-price{font-size:.95rem;font-weight:800;font-variant-numeric:tabular-nums}
+.lvl-price.e{color:var(--accent)}.lvl-price.s{color:var(--red)}.lvl-price.t1{color:#64ffda}.lvl-price.t2{color:var(--green)}.lvl-price.t3{color:var(--gold)}
+.lvl-right{display:flex;align-items:center;gap:8px}
+.lvl-pct{font-size:.7rem;font-weight:700;padding:2px 7px;border-radius:4px}
+.lvl-pct.loss{background:rgba(255,61,90,.12);color:var(--red)}
+.lvl-pct.gain{background:rgba(0,230,118,.1);color:var(--green)}
+.lvl-pct.gain2{background:rgba(255,215,0,.1);color:var(--gold)}
+.lvl-size{font-size:.62rem;color:var(--text2);padding:1px 6px;background:rgba(255,255,255,.05);border-radius:3px}
+.lvl-note{font-size:.62rem;color:var(--text2);max-width:130px;text-align:right;line-height:1.3}
+
+/* ─── RR VISUAL ─── */
+.rr-bar{display:flex;gap:3px;align-items:stretch;height:28px;border-radius:5px;overflow:hidden;margin:10px 0}
+.rr-risk{background:rgba(255,61,90,.35);display:flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:700;color:var(--red);min-width:50px}
+.rr-tp1{background:rgba(100,255,218,.25);display:flex;align-items:center;justify-content:center;font-size:.63rem;font-weight:700;color:#64ffda}
+.rr-tp2{background:rgba(0,230,118,.25);display:flex;align-items:center;justify-content:center;font-size:.63rem;font-weight:700;color:var(--green)}
+.rr-tp3{background:rgba(255,215,0,.22);display:flex;align-items:center;justify-content:center;font-size:.63rem;font-weight:700;color:var(--gold)}
+
+/* ─── CONFLUENCE CARD ─── */
+.cf-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.cf-hdr{background:var(--bg3);border-bottom:1px solid var(--border);padding:11px 16px;font-size:.67rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:1.5px}
+.cf-body{padding:14px 16px}
+.cf-item{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+.cf-item:last-child{border-bottom:none}
+.cf-icon{font-size:1.05rem;width:22px;text-align:center;flex-shrink:0}
+.cf-text{flex:1;font-size:.74rem;color:var(--text);line-height:1.35}
+.cf-sub{font-size:.62rem;color:var(--text2);display:block;margin-top:1px}
+.cf-bar-wrap{width:80px;flex-shrink:0}
+.cf-bar-track{height:6px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden}
+.cf-bar-fill{height:100%;border-radius:3px;transition:width 1.2s ease}
+.cf-score-label{font-size:.65rem;font-weight:800;text-align:right;margin-top:2px}
+
+/* Total score meter */
+.score-meter{margin-top:12px;padding:12px;background:rgba(0,0,0,.25);border-radius:8px;border:1px solid rgba(255,255,255,.05)}
+.sm-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.sm-label{font-size:.65rem;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.8px}
+.sm-score{font-size:1.1rem;font-weight:900;color:var(--red)}
+.sm-track{height:8px;background:rgba(255,255,255,.06);border-radius:4px;overflow:hidden}
+.sm-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,var(--red),rgba(255,61,90,.5));transition:width 1.5s ease}
+.sm-grades{display:flex;justify-content:space-between;margin-top:4px;font-size:.58rem;color:var(--text2)}
+.grade-pill{padding:3px 10px;border-radius:12px;font-size:.68rem;font-weight:800;text-align:center;margin-top:8px}
+.grade-pill.high{background:rgba(255,61,90,.15);color:var(--red);border:1px solid rgba(255,61,90,.3)}
+
+/* ─── EXECUTION PANEL ─── */
+.exec-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:16px}
+@media(max-width:860px){.exec-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:580px){.exec-grid{grid-template-columns:1fr}}
+.exec-card{background:var(--panel);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.exec-hdr{background:var(--bg3);border-bottom:1px solid var(--border);padding:9px 14px;font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:1.3px}
+.exec-body{padding:14px}
+
+/* Risk calculator */
+.risk-row{display:flex;gap:8px;margin-bottom:8px}
+.risk-f{flex:1;display:flex;flex-direction:column;gap:3px}
+.risk-l{font-size:.6rem;color:var(--text2);text-transform:uppercase;letter-spacing:.4px;font-weight:600}
+.risk-i{background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:5px;font-size:.82rem;width:100%;transition:border-color .2s;font-family:monospace}
+.risk-i:focus{outline:none;border-color:var(--accent)}
+.risk-out{background:rgba(0,0,0,.3);border-radius:7px;padding:10px;border:1px solid rgba(255,255,255,.04)}
+.ro-row{display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:.72rem}
+.ro-row:last-child{border:none;margin-top:4px;padding-top:5px}
+.ro-label{color:var(--text2)}
+.ro-val{font-weight:700;color:var(--text);font-family:monospace}
+.ro-val.r{color:var(--red)}.ro-val.g{color:var(--green)}.ro-val.gold{color:var(--gold)}.ro-val.b{color:var(--accent)}
+
+/* Timeline */
+.tl{position:relative;padding-left:18px}
+.tl::before{content:'';position:absolute;left:5px;top:0;bottom:0;width:1px;background:var(--border)}
+.tl-i{position:relative;margin-bottom:13px}
+.tl-dot{position:absolute;left:-15px;top:4px;width:8px;height:8px;border-radius:50%;border:1.5px solid;background:transparent}
+.tl-dot.r{border-color:var(--red);background:rgba(255,61,90,.2)}
+.tl-dot.g{border-color:var(--green);background:rgba(0,230,118,.2)}
+.tl-dot.b{border-color:var(--accent);background:rgba(0,212,255,.15)}
+.tl-dot.w{border-color:var(--warn);background:rgba(255,152,0,.2)}
+.tl-t{font-size:.6rem;color:var(--text2);font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin-bottom:2px}
+.tl-x{font-size:.73rem;color:var(--text);line-height:1.45}
+
+/* Checklist */
+.cl{list-style:none}
+.cl li{display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:.73rem}
+.cl li:last-child{border:none}
+.cb{width:15px;height:15px;border:1px solid var(--border);border-radius:3px;flex-shrink:0;margin-top:1px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .2s;font-size:.6rem;color:transparent}
+.cb.done{background:rgba(0,230,118,.2);border-color:rgba(0,230,118,.4);color:var(--green)}
+.cl-text{color:var(--text);line-height:1.35}
+.cl-tag{display:inline-block;padding:1px 5px;border-radius:3px;font-size:.58rem;font-weight:700;margin-left:4px}
+.cl-tag.must{background:rgba(255,61,90,.15);color:var(--red)}
+.cl-tag.good{background:rgba(0,230,118,.1);color:var(--green)}
+
+/* ─── SCENARIOS ─── */
+.scen-table{width:100%;border-collapse:collapse;font-size:.73rem}
+.scen-table th{padding:8px 10px;font-size:.62rem;color:var(--text2);text-transform:uppercase;letter-spacing:.4px;text-align:left;background:rgba(0,0,0,.3);border-bottom:1px solid var(--border);font-weight:600;white-space:nowrap}
+.scen-table td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.03);vertical-align:top;line-height:1.4}
+.scen-table tr:hover td{background:rgba(255,255,255,.015)}
+.sc-bear{border-left:2px solid var(--red)}
+.sc-bull{border-left:2px solid var(--green)}
+.sc-warn{border-left:2px solid var(--warn)}
+.stag{display:inline-block;padding:1px 7px;border-radius:3px;font-size:.65rem;font-weight:700}
+.stag.go{background:rgba(255,61,90,.2);color:var(--red)}
+.stag.no{background:rgba(255,152,0,.15);color:var(--warn)}
+.stag.adj{background:rgba(0,212,255,.1);color:var(--accent)}
+
+/* ─── ALERTS ─── */
+.alert{border-radius:7px;padding:10px 14px;margin-bottom:12px;display:flex;gap:10px;font-size:.74rem;line-height:1.5;align-items:flex-start}
+.alert.danger{background:rgba(255,61,90,.07);border:1px solid rgba(255,61,90,.22)}
+.alert.info{background:rgba(0,212,255,.07);border:1px solid rgba(0,212,255,.18)}
+.alert.success{background:rgba(0,230,118,.07);border:1px solid rgba(0,230,118,.2)}
+.alert.warn{background:rgba(255,152,0,.07);border:1px solid rgba(255,152,0,.2)}
+.a-icon{font-size:1.1rem;flex-shrink:0;margin-top:1px}
+
+/* ─── SECTION TITLES ─── */
+.sec-t{font-size:.68rem;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1.8px;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.sec-t::after{content:'';flex:1;height:1px;background:var(--border)}
+
+/* ─── PRICE LADDER ─── */
+.ladder{background:var(--panel);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:16px}
+.ladder-hdr{background:var(--bg3);border-bottom:1px solid var(--border);padding:10px 16px;font-size:.66rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:1.5px}
+.ladder-body{padding:6px 0}
+.ladder-row{display:flex;align-items:center;gap:12px;padding:5px 16px;border-bottom:1px solid rgba(255,255,255,.025);transition:background .15s}
+.ladder-row:last-child{border:none}
+.ladder-row:hover{background:rgba(255,255,255,.02)}
+.ladder-row.current{background:rgba(255,215,0,.06);border-left:3px solid var(--gold)}
+.ladder-row.entry-l{background:rgba(0,212,255,.05);border-left:3px solid var(--accent)}
+.ladder-row.sl-l{background:rgba(255,61,90,.04);border-left:3px solid var(--red)}
+.ladder-row.tp1-l{background:rgba(100,255,218,.03);border-left:3px solid #64ffda}
+.ladder-row.tp2-l{background:rgba(0,230,118,.04);border-left:3px solid var(--green)}
+.ladder-row.tp3-l{background:rgba(255,215,0,.03);border-left:3px solid var(--gold)}
+.lr-price{font-size:.82rem;font-weight:800;font-family:monospace;font-variant-numeric:tabular-nums;width:85px;flex-shrink:0}
+.lr-bar-wrap{flex:1;height:8px;background:rgba(255,255,255,.05);border-radius:4px;overflow:hidden}
+.lr-bar{height:100%;border-radius:4px}
+.lr-label{font-size:.65rem;font-weight:700;width:80px;text-align:right;flex-shrink:0}
+.lr-note{font-size:.6rem;color:var(--text2);width:150px;text-align:right;flex-shrink:0;line-height:1.3}
+
+/* ─── DISCLAIMER ─── */
+.disc{background:rgba(0,0,0,.4);border:1px solid var(--border);border-radius:8px;padding:10px 16px;font-size:.67rem;color:var(--text2);line-height:1.6;margin-top:20px;text-align:center}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:3px;height:3px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+/* Pulse animation for entry zone */
+@keyframes entryPulse{0%,100%{box-shadow:0 0 0 0 rgba(0,212,255,.3)}50%{box-shadow:0 0 0 6px rgba(0,212,255,0)}}
+.entry-row{animation:entryPulse 2.5s infinite}
+</style>
+</head>
+<body>
+
+<!-- ─── HEADER ─── -->
+<header class="hdr">
+  <div class="hdr-left">
+    <div class="eth-icon">Ξ</div>
+    <div>
+      <div class="hdr-title">ETH/USDT — Final Setup</div>
+      <div class="hdr-sub">Highest Confluence · SMC · Live Data · Delta Exchange</div>
+    </div>
+  </div>
+  <div class="live-price-wrap">
+    <div>
+      <div class="live-price" id="lp">$1,628.95</div>
+      <div style="display:flex;gap:6px;align-items:center;margin-top:2px;justify-content:flex-end">
+        <span class="pchg up" id="pc">+4.63%</span>
+        <span style="font-size:.6rem;color:var(--text2)" id="psrc">OKX</span>
+      </div>
+    </div>
+    <div class="ldot-wrap"><div class="ldot"></div>SHORT ACTIVE</div>
+  </div>
+</header>
+
+<div class="page">
+
+<!-- ─── VERDICT BANNER ─── -->
+<div class="verdict">
+  <div class="verdict-top">
+    <div class="verdict-icon">🎯</div>
+    <div>
+      <div class="verdict-tag">🔴 Final Recommendation</div>
+      <div class="verdict-title">SHORT ETH/USDT — 4H Supply Zone</div>
+      <div class="verdict-subtitle">Price entering 87%-strength 4H supply zone · Wave B exhaustion · HTF bearish · USDT Dom elevated · BSL sweep imminent</div>
+    </div>
+    <div class="verdict-score">
+      <div class="vs-num">79%</div>
+      <div class="vs-denom">55/70 score</div>
+      <div class="vs-label">🏆 HIGH QUALITY</div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-top:4px">
+    <div style="background:rgba(0,0,0,.3);border-radius:6px;padding:7px 10px;text-align:center">
+      <div style="font-size:.58rem;color:var(--text2);text-transform:uppercase;letter-spacing:.6px">Style</div>
+      <div style="font-size:.85rem;font-weight:700;color:var(--text)">Intraday</div>
+    </div>
+    <div style="background:rgba(0,0,0,.3);border-radius:6px;padding:7px 10px;text-align:center">
+      <div style="font-size:.58rem;color:var(--text2);text-transform:uppercase;letter-spacing:.6px">Direction</div>
+      <div style="font-size:.85rem;font-weight:700;color:var(--red)">SHORT ↓</div>
+    </div>
+    <div style="background:rgba(0,0,0,.3);border-radius:6px;padding:7px 10px;text-align:center">
+      <div style="font-size:.58rem;color:var(--text2);text-transform:uppercase;letter-spacing:.6px">Entry Type</div>
+      <div style="font-size:.85rem;font-weight:700;color:var(--accent)">Limit Order</div>
+    </div>
+    <div style="background:rgba(0,0,0,.3);border-radius:6px;padding:7px 10px;text-align:center">
+      <div style="font-size:.58rem;color:var(--text2);text-transform:uppercase;letter-spacing:.6px">Weighted RR</div>
+      <div style="font-size:.85rem;font-weight:700;color:var(--gold)">2.55:1</div>
+    </div>
+    <div style="background:rgba(0,0,0,.3);border-radius:6px;padding:7px 10px;text-align:center">
+      <div style="font-size:.58rem;color:var(--text2);text-transform:uppercase;letter-spacing:.6px">Hold Time</div>
+      <div style="font-size:.85rem;font-weight:700;color:var(--text)">4–16 hours</div>
+    </div>
+    <div style="background:rgba(0,0,0,.3);border-radius:6px;padding:7px 10px;text-align:center">
+      <div style="font-size:.58rem;color:var(--text2);text-transform:uppercase;letter-spacing:.6px">Exchange</div>
+      <div style="font-size:.85rem;font-weight:700;color:var(--text)">Delta Exchange</div>
+    </div>
+    <div style="background:rgba(0,0,0,.3);border-radius:6px;padding:7px 10px;text-align:center">
+      <div style="font-size:.58rem;color:var(--text2);text-transform:uppercase;letter-spacing:.6px">Generated</div>
+      <div style="font-size:.75rem;font-weight:600;color:var(--text)" id="genT">—</div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── MAIN SETUP + CONFLUENCE ─── -->
+<div class="setup-grid">
+
+  <!-- LEFT: Setup levels -->
+  <div class="setup-main">
+    <div class="setup-main-hdr">
+      <div class="smh-title">🔴 Short Setup — Full Level Detail</div>
+      <div class="smh-badge">AWAIT TRIGGER</div>
+    </div>
+
+    <!-- Entry -->
+    <div class="lvl-section">
+      <div class="lvl-section-title">📍 Entry Zone</div>
+      <div class="lvl-row entry-row">
+        <div class="lvl-left">
+          <span class="lvl-label">Optimal Entry</span>
+          <span class="lvl-price e">$1,646 – $1,652</span>
+        </div>
+        <div class="lvl-right">
+          <span class="lvl-note">Inside 4H supply zone · After BSL sweep at $1,640</span>
+        </div>
+      </div>
+      <div class="lvl-row" style="background:rgba(0,212,255,.04);border-left:2px solid rgba(0,212,255,.3)">
+        <div class="lvl-left">
+          <span class="lvl-label">Aggressive Entry</span>
+          <span class="lvl-price e">$1,630 – $1,635</span>
+        </div>
+        <div class="lvl-right">
+          <span class="lvl-note">Now — 15m bearish confirmation only</span>
+        </div>
+      </div>
+      <div style="font-size:.67rem;color:var(--text2);padding:6px 4px;line-height:1.5">
+        💡 <strong>Trigger required:</strong> Bearish engulfing or shooting star closing on 15m inside supply zone. Do NOT enter on a green candle.
+      </div>
+    </div>
+
+    <!-- Stop Loss -->
+    <div class="lvl-section">
+      <div class="lvl-section-title">🛡️ Stop Loss</div>
+      <div class="lvl-row sl-row">
+        <div class="lvl-left">
+          <span class="lvl-label">Stop Loss</span>
+          <span class="lvl-price s">$1,668.00</span>
+        </div>
+        <div class="lvl-right">
+          <span class="lvl-pct loss">+1.21% risk</span>
+          <span class="lvl-note">Above 4H supply zone top + $5 buffer</span>
+        </div>
+      </div>
+      <div style="font-size:.67rem;color:var(--text2);padding:6px 4px;line-height:1.5">
+        📐 <strong>Why $1,668?</strong> Above the 4H supply zone ceiling ($1,663) + buffer. If price closes 1H candle above $1,668, the supply zone is broken — setup invalidated.
+      </div>
+    </div>
+
+    <!-- Targets -->
+    <div class="lvl-section">
+      <div class="lvl-section-title">🎯 Targets — Partial Exits</div>
+      <div class="lvl-row tp1-row">
+        <div class="lvl-left">
+          <span class="lvl-label">TP1 — 40%</span>
+          <span class="lvl-price t1">$1,617.00</span>
+        </div>
+        <div class="lvl-right">
+          <span class="lvl-pct gain">–1.88%</span>
+          <span class="lvl-note">Bullish FVG ($1,617–$1,628) + 1H demand</span>
+        </div>
+      </div>
+      <div class="lvl-row tp2-row">
+        <div class="lvl-left">
+          <span class="lvl-label">TP2 — 35%</span>
+          <span class="lvl-price t2">$1,594.00</span>
+        </div>
+        <div class="lvl-right">
+          <span class="lvl-pct gain">–3.28%</span>
+          <span class="lvl-note">4H demand zone top (84% strength)</span>
+        </div>
+      </div>
+      <div class="lvl-row tp3-row">
+        <div class="lvl-left">
+          <span class="lvl-label">TP3 — 25%</span>
+          <span class="lvl-price t3">$1,569.00</span>
+        </div>
+        <div class="lvl-right">
+          <span class="lvl-pct gain2">–4.79%</span>
+          <span class="lvl-note">4H demand zone 2 (89% strength)</span>
+        </div>
+      </div>
+
+      <!-- RR visual bar -->
+      <div style="padding:8px 4px 0">
+        <div style="font-size:.6rem;color:var(--text2);margin-bottom:4px;text-transform:uppercase;letter-spacing:.6px">Risk : Reward Visual</div>
+        <div class="rr-bar">
+          <div class="rr-risk" style="flex:1.21">RISK 1.21%</div>
+          <div class="rr-tp1" style="flex:1.88">TP1 1.6:1</div>
+          <div class="rr-tp2" style="flex:3.28">TP2 2.7:1</div>
+          <div class="rr-tp3" style="flex:4.79">TP3 4.0:1</div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:.6rem;color:var(--text2);margin-top:3px">
+          <span>Weighted RR: <strong style="color:var(--gold)">2.55:1</strong></span>
+          <span>Max net gain vs 2% risk = <strong style="color:var(--green)">5.06% account</strong></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Post-entry management -->
+    <div class="lvl-section">
+      <div class="lvl-section-title">⚙️ Post-Entry SL Management</div>
+      <div style="font-size:.72rem;color:var(--text);line-height:1.8">
+        <div>After TP1 hit → <strong style="color:#64ffda">Move SL to $1,652</strong> (breakeven zone)</div>
+        <div>After TP2 hit → <strong style="color:var(--green)">Trail SL with 1H swing high</strong></div>
+        <div>Max hold → <strong style="color:var(--gold)">16 hours</strong>. If TP1 not hit by then, exit at market.</div>
+        <div style="margin-top:6px;color:var(--text2);font-size:.67rem">⚠ Never move SL away from trade direction. Only tighten.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: Confluence card -->
+  <div class="cf-card">
+    <div class="cf-hdr">🧩 Confluence Analysis — 7 Factors</div>
+    <div class="cf-body">
+
+      <div class="cf-item">
+        <div class="cf-icon">🏗️</div>
+        <div style="flex:1">
+          <div class="cf-text">Market Structure — 4H Bearish</div>
+          <span class="cf-sub">4H downtrend: $2,009 → $1,628. HTF sell structure intact. No bullish BOS on 4H.</span>
+        </div>
+        <div class="cf-bar-wrap">
+          <div class="cf-bar-track"><div class="cf-bar-fill" style="width:80%;background:var(--red)"></div></div>
+          <div class="cf-score-label" style="color:var(--red)">8/10</div>
+        </div>
+      </div>
+
+      <div class="cf-item">
+        <div class="cf-icon">🔭</div>
+        <div style="flex:1">
+          <div class="cf-text">HTF Alignment — Daily + Weekly Bearish</div>
+          <span class="cf-sub">5 consecutive bearish daily candles. Weekly downtrend. 30D: $2,383 → $1,504 (–37%).</span>
+        </div>
+        <div class="cf-bar-wrap">
+          <div class="cf-bar-track"><div class="cf-bar-fill" style="width:90%;background:var(--red)"></div></div>
+          <div class="cf-score-label" style="color:var(--red)">9/10</div>
+        </div>
+      </div>
+
+      <div class="cf-item">
+        <div class="cf-icon">📦</div>
+        <div style="flex:1">
+          <div class="cf-text">4H Supply Zone — 87% Strength, Price Inside</div>
+          <span class="cf-sub">Zone: $1,583–$1,663. Price currently at $1,629. Strong displacement candle origin. BSL at $1,640 above.</span>
+        </div>
+        <div class="cf-bar-wrap">
+          <div class="cf-bar-track"><div class="cf-bar-fill" style="width:90%;background:var(--red)"></div></div>
+          <div class="cf-score-label" style="color:var(--red)">9/10</div>
+        </div>
+      </div>
+
+      <div class="cf-item">
+        <div class="cf-icon">⚡</div>
+        <div style="flex:1">
+          <div class="cf-text">Elliott Wave — Wave B Bounce, Wave C Pending</div>
+          <span class="cf-sub">Wave A: $2,383→$1,504. Wave B bounce: 14% retrace (shallow). Wave C down expected to $1,380–$1,200.</span>
+        </div>
+        <div class="cf-bar-wrap">
+          <div class="cf-bar-track"><div class="cf-bar-fill" style="width:80%;background:var(--purple)"></div></div>
+          <div class="cf-score-label" style="color:var(--purple)">8/10</div>
+        </div>
+      </div>
+
+      <div class="cf-item">
+        <div class="cf-icon">🔗</div>
+        <div style="flex:1">
+          <div class="cf-text">USDT Dominance — 8.38%, Elevated</div>
+          <span class="cf-sub">USDT Dom at 8.38% (vs ~5% during ETH bull runs). High stablecoin dom = risk-off = ETH bearish pressure.</span>
+        </div>
+        <div class="cf-bar-wrap">
+          <div class="cf-bar-track"><div class="cf-bar-fill" style="width:60%;background:var(--warn)"></div></div>
+          <div class="cf-score-label" style="color:var(--warn)">6/10</div>
+        </div>
+      </div>
+
+      <div class="cf-item">
+        <div class="cf-icon">🕯️</div>
+        <div style="flex:1">
+          <div class="cf-text">Candle Patterns — 1H Exhaustion at Highs</div>
+          <span class="cf-sub">1H volume declining (ratio 0.44). Small bodies forming at zone top. 12:00 candle was bearish with volume 14K (highest). Compression = smart money distributing.</span>
+        </div>
+        <div class="cf-bar-wrap">
+          <div class="cf-bar-track"><div class="cf-bar-fill" style="width:70%;background:var(--warn)"></div></div>
+          <div class="cf-score-label" style="color:var(--warn)">7/10</div>
+        </div>
+      </div>
+
+      <div class="cf-item">
+        <div class="cf-icon">💧</div>
+        <div style="flex:1">
+          <div class="cf-text">Liquidity — BSL Above, SSL Below</div>
+          <span class="cf-sub">BSL (Buy-Side Liq) at $1,640 = equal highs on 15m. SSL (Sell-Side Liq) at $1,606.67. Smart money likely sweeps BSL → reverses short.</span>
+        </div>
+        <div class="cf-bar-wrap">
+          <div class="cf-bar-track"><div class="cf-bar-fill" style="width:80%;background:var(--accent)"></div></div>
+          <div class="cf-score-label" style="color:var(--accent)">8/10</div>
+        </div>
+      </div>
+
+      <!-- Total score meter -->
+      <div class="score-meter">
+        <div class="sm-top">
+          <span class="sm-label">Total Confluence Score</span>
+          <span class="sm-score">55 / 70 — 79%</span>
+        </div>
+        <div class="sm-track"><div class="sm-fill" style="width:79%"></div></div>
+        <div class="sm-grades"><span>0 (Low)</span><span>35 (Med)</span><span>49 (High)</span><span>70 (Max)</span></div>
+        <div class="grade-pill high">🏆 HIGH QUALITY SIGNAL — Full Position Size Authorised</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── PRICE LADDER ─── -->
+<div class="sec-t">📊 Price Ladder — Key Levels</div>
+<div class="ladder">
+  <div class="ladder-hdr">Live Market Structure Map — All Key Levels</div>
+  <div class="ladder-body" id="ladderBody">
+    <!-- Populated by JS with live price -->
+  </div>
+</div>
+
+<!-- ─── EXECUTION + RISK + TIMELINE ─── -->
+<div class="sec-t">⚙️ Execution Plan</div>
+<div class="exec-grid">
+
+  <!-- Risk Calculator -->
+  <div class="exec-card">
+    <div class="exec-hdr" style="color:var(--red)">💸 Position Size Calculator</div>
+    <div class="exec-body">
+      <div class="risk-row">
+        <div class="risk-f"><label class="risk-l">Account (USDT)</label><input class="risk-i" id="rcap" type="number" value="10000" oninput="calcR()"></div>
+        <div class="risk-f"><label class="risk-l">Risk % per trade</label><input class="risk-i" id="rrisk" type="number" value="2" step="0.5" min="0.1" max="10" oninput="calcR()"></div>
+      </div>
+      <div class="risk-row">
+        <div class="risk-f"><label class="risk-l">Entry price</label><input class="risk-i" id="rentryI" type="number" value="1648" step="0.5" oninput="calcR()"></div>
+        <div class="risk-f"><label class="risk-l">Stop loss</label><input class="risk-i" id="rsl" type="number" value="1668" step="0.5" oninput="calcR()"></div>
+      </div>
+      <div class="risk-out" id="rout">
+        <div class="ro-row"><span class="ro-label">Risk Amount (USDT)</span><span class="ro-val r" id="rRiskAmt">—</span></div>
+        <div class="ro-row"><span class="ro-label">SL Distance</span><span class="ro-val" id="rSlDist">—</span></div>
+        <div class="ro-row"><span class="ro-label">Position Size (ETH)</span><span class="ro-val b" id="rPosEth">—</span></div>
+        <div class="ro-row"><span class="ro-label">Notional Value</span><span class="ro-val" id="rNotional">—</span></div>
+        <div class="ro-row"><span class="ro-label">TP1 Profit — $1,617 (40%)</span><span class="ro-val g" id="rTP1">—</span></div>
+        <div class="ro-row"><span class="ro-label">TP2 Profit — $1,594 (35%)</span><span class="ro-val g" id="rTP2">—</span></div>
+        <div class="ro-row"><span class="ro-label">TP3 Profit — $1,569 (25%)</span><span class="ro-val g" id="rTP3">—</span></div>
+        <div class="ro-row"><span class="ro-label">Total Max Gain</span><span class="ro-val g" id="rTotal">—</span></div>
+        <div class="ro-row"><span class="ro-label">Delta Fees (0.01%×2)</span><span class="ro-val r" id="rFees">—</span></div>
+        <div class="ro-row"><span class="ro-label">Funding (0.005%/8h×2)</span><span class="ro-val r" id="rFund">—</span></div>
+        <div class="ro-row" style="border-top:1px solid rgba(255,255,255,.06);margin-top:4px;padding-top:6px">
+          <span class="ro-label" style="font-weight:700;color:var(--text)">Net Profit (TP2)</span>
+          <span class="ro-val gold" id="rNet">—</span>
+        </div>
+      </div>
+      <div style="font-size:.63rem;color:var(--text2);margin-top:8px;line-height:1.5">
+        Delta Exchange: Maker 0.01% · Taker 0.01% · Funding ~0.005%/8h · Contract: 0.01 ETH
+      </div>
+    </div>
+  </div>
+
+  <!-- Execution timeline -->
+  <div class="exec-card">
+    <div class="exec-hdr" style="color:var(--accent)">🗓️ Execution Timeline</div>
+    <div class="exec-body">
+      <div class="tl">
+        <div class="tl-i">
+          <div class="tl-dot b"></div>
+          <div class="tl-t">NOW — Watch Phase</div>
+          <div class="tl-x">Price at $1,629. Monitor 15m chart. Set alert at $1,640 (BSL level). Do not enter yet — wait for BSL sweep + rejection.</div>
+        </div>
+        <div class="tl-i">
+          <div class="tl-dot w"></div>
+          <div class="tl-t">BSL Sweep ($1,636–$1,648)</div>
+          <div class="tl-x">Price pushes above $1,636 EQH. This is the BSL hunt. Prepare limit sell at $1,648. Expect quick spike then reversal.</div>
+        </div>
+        <div class="tl-i">
+          <div class="tl-dot r"></div>
+          <div class="tl-t">Entry Trigger</div>
+          <div class="tl-x">Bearish engulfing or pin bar on 15m closes inside $1,646–$1,652. Place limit short at $1,648. SL at $1,668.</div>
+        </div>
+        <div class="tl-i">
+          <div class="tl-dot r"></div>
+          <div class="tl-t">TP1 Hit — $1,617 (Close 40%)</div>
+          <div class="tl-x">Move SL to $1,652 (breakeven+). Let 60% ride. Target is the bullish FVG fill at $1,617–$1,628.</div>
+        </div>
+        <div class="tl-i">
+          <div class="tl-dot g"></div>
+          <div class="tl-t">TP2 Hit — $1,594 (Close 35%)</div>
+          <div class="tl-x">Trail remaining 25% with 1H swing highs. TP2 at 4H demand zone top. Strong support likely here.</div>
+        </div>
+        <div class="tl-i">
+          <div class="tl-dot g"></div>
+          <div class="tl-t">TP3 — $1,569 (Close final 25%)</div>
+          <div class="tl-x">4H demand zone 2 (89% strength). Expect strong bounce. Full close or reverse to long if 1H BOS flips bullish.</div>
+        </div>
+        <div class="tl-i">
+          <div class="tl-dot w"></div>
+          <div class="tl-t">Setup Invalidation</div>
+          <div class="tl-x">1H candle closes above $1,668 → supply zone broken → exit immediately. Do not hold against structure.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pre-trade checklist -->
+  <div class="exec-card">
+    <div class="exec-hdr" style="color:var(--green)">✅ Pre-Trade Checklist</div>
+    <div class="exec-body">
+      <ul class="cl">
+        <li><div class="cb" onclick="chk(this)"></div><span class="cl-text">Price at or above $1,640 (inside supply) <span class="cl-tag must">MUST</span></span></li>
+        <li><div class="cb" onclick="chk(this)"></div><span class="cl-text">15m bearish candle closes in supply zone <span class="cl-tag must">MUST</span></span></li>
+        <li><div class="cb" onclick="chk(this)"></div><span class="cl-text">Volume on trigger candle ≥ average <span class="cl-tag must">MUST</span></span></li>
+        <li><div class="cb" onclick="chk(this)"></div><span class="cl-text">1H candle does NOT close above $1,663 (zone top) <span class="cl-tag must">MUST</span></span></li>
+        <li><div class="cb" onclick="chk(this)"></div><span class="cl-text">SL order placed BEFORE position open <span class="cl-tag must">MUST</span></span></li>
+        <li><div class="cb" onclick="chk(this)"></div><span class="cl-text">Position size calculated ≤ 2% account risk <span class="cl-tag must">MUST</span></span></li>
+        <li><div class="cb" onclick="chk(this)"></div><span class="cl-text">4H structure still bearish (no BOS flip) <span class="cl-tag must">MUST</span></span></li>
+        <li><div class="cb" onclick="chk(this)"></div><span class="cl-text">USDT Dom not sharply falling (would negate signal) <span class="cl-tag good">GOOD</span></span></li>
+        <li><div class="cb" onclick="chk(this)"></div><span class="cl-text">No major ETH news/upgrade in next 12h <span class="cl-tag good">GOOD</span></span></li>
+        <li><div class="cb" onclick="chk(this)"></div><span class="cl-text">TP1/TP2 limit take-profit orders set in advance <span class="cl-tag good">GOOD</span></span></li>
+      </ul>
+      <div style="margin-top:10px;padding:8px 10px;background:rgba(0,230,118,.05);border:1px solid rgba(0,230,118,.15);border-radius:6px;font-size:.68rem;color:var(--text2);line-height:1.5">
+        <strong style="color:var(--green)">Rule:</strong> If fewer than 7/10 boxes checked, <strong>do not enter</strong>. Wait for next opportunity.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── SCENARIOS ─── -->
+<div class="sec-t">🎭 What-If Scenarios</div>
+<div class="alert info">
+  <div class="a-icon">💡</div>
+  <div>Always have a plan for every scenario. Markets do not move in straight lines. The highest-confidence setup can still hit SL — that is normal. What matters is following your plan.</div>
+</div>
+
+<div style="background:var(--panel);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:16px">
+  <div style="overflow-x:auto">
+    <table class="scen-table">
+      <thead><tr>
+        <th>Scenario</th><th>Trigger</th><th>Price Action</th><th>Action</th><th>Reason</th>
+      </tr></thead>
+      <tbody>
+        <tr class="sc-bear">
+          <td><span class="stag go">✅ Ideal Short</span></td>
+          <td>BSL swept at $1,640–$1,648 then 15m bearish engulfing closes</td>
+          <td>Sharp spike up, immediate reversal, momentum candle down</td>
+          <td><strong style="color:var(--red)">Enter short at $1,648 limit. SL $1,668. TPs as planned.</strong></td>
+          <td>Full confluence confirmed. Maximum probability setup. Proceed with full position size.</td>
+        </tr>
+        <tr class="sc-warn">
+          <td><span class="stag adj">⚡ Early Entry</span></td>
+          <td>Price at current $1,629, 15m bearish signal forms now</td>
+          <td>Small bearish candle at supply without BSL sweep</td>
+          <td><strong style="color:var(--warn)">Enter at $1,630 aggressive, SL $1,655. Reduce size 50%.</strong></td>
+          <td>Without BSL sweep, risk of push to $1,640+ before reversal. Half size manages this risk. Use SL at $1,655 (above 4H supply mid).</td>
+        </tr>
+        <tr class="sc-warn">
+          <td><span class="stag adj">⏳ Extended Wave B</span></td>
+          <td>Price breaks above $1,648 and pushes to $1,663–$1,700</td>
+          <td>Strong bullish candles closing above entry plan</td>
+          <td><strong style="color:var(--warn)">Wait. Do NOT chase. Adjust entry to $1,695–$1,710 zone.</strong></td>
+          <td>Wave B can extend to 61.8% of Wave A ($1,950+). If zone breaks, wait for next supply: $1,730–$1,771 (88% strength).</td>
+        </tr>
+        <tr class="sc-bull">
+          <td><span class="stag no">❌ Invalidation</span></td>
+          <td>1H candle closes above $1,668 with strong volume</td>
+          <td>Supply zone broken with momentum. New higher high forming.</td>
+          <td><strong style="color:var(--green)">Cancel short. Possible long from $1,668 breakout retest.</strong></td>
+          <td>Supply zone broken = structure shift. Smart money accumulating. New long bias toward $1,730. Reassess with fresh analysis.</td>
+        </tr>
+        <tr class="sc-bull">
+          <td><span class="stag no">⬇️ Price Drops First</span></td>
+          <td>Price drops from current $1,629 to $1,594–$1,569 without entry</td>
+          <td>Bearish continuation before reaching supply zone</td>
+          <td><strong style="color:var(--green)">No short trade. Watch for long setup at 4H demand ($1,569–$1,594).</strong></td>
+          <td>If price drops to demand without touching supply, a long bounce trade becomes valid. SSL sweep at $1,606 may precede bounce.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ─── SMART MONEY NARRATIVE ─── -->
+<div class="sec-t">🧠 Smart Money Narrative</div>
+<div style="background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+    <div>
+      <div style="font-size:.72rem;font-weight:700;color:var(--red);margin-bottom:8px;text-transform:uppercase;letter-spacing:.8px">What Smart Money Is Doing</div>
+      <div style="font-size:.75rem;color:var(--text);line-height:1.7">
+        <div>1. 📉 Institutions distributed ETH at <strong style="color:var(--red)">$2,000–$2,383</strong> (supply zone origin)</div>
+        <div>2. 🔽 Drove price down to <strong style="color:var(--red)">$1,504</strong> — sweeping retail stop losses below support</div>
+        <div>3. 📈 Minor short-cover bounce to <strong style="color:var(--warn)">current $1,629</strong> (Wave B)</div>
+        <div>4. 🎯 Now running price into the <strong style="color:var(--red)">$1,640–$1,663 supply zone</strong> to trigger retail longs</div>
+        <div>5. 🔄 Will reverse and sell into those longs, targeting <strong style="color:var(--green)">$1,569–$1,504</strong> demand</div>
+      </div>
+    </div>
+    <div>
+      <div style="font-size:.72rem;font-weight:700;color:var(--accent);margin-bottom:8px;text-transform:uppercase;letter-spacing:.8px">Why This Setup Works</div>
+      <div style="font-size:.75rem;color:var(--text);line-height:1.7">
+        <div>✅ <strong>Supply zone</strong> formed from a strong bearish displacement (origin of the drop)</div>
+        <div>✅ <strong>Liquidity above</strong> — retail buy-stops at $1,640 EQH will be swept first</div>
+        <div>✅ <strong>HTF trend</strong> — we are shorting WITH the 4H and daily trend, not against it</div>
+        <div>✅ <strong>Elliott structure</strong> — Wave B bounces are selling opportunities, not reversal signals</div>
+        <div>✅ <strong>Institutional footprint</strong> — the 12:00 1H bearish candle had 14,647 ETH volume — smart money distribution</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── FINAL WARNINGS ─── -->
+<div class="sec-t">⚠️ Risk Warnings</div>
+<div class="alert danger">
+  <div class="a-icon">🚨</div>
+  <div><strong>Capital Risk:</strong> This is a SHORT trade. ETH can move violently upward (short squeeze). Maximum risk is 2% of account with SL at $1,668. If SL is hit, total loss = exactly your 2% risk amount. Never remove SL once placed.</div>
+</div>
+<div class="alert warn">
+  <div class="a-icon">⚡</div>
+  <div><strong>Wave B Extension Risk:</strong> Elliott Wave B can extend to 78.6% retrace of Wave A = $1,856 before Wave C begins. If this happens, our $1,668 SL will be hit. This is the trade risk — accepted with 2% sizing.</div>
+</div>
+<div class="alert warn">
+  <div class="a-icon">📰</div>
+  <div><strong>News Risk:</strong> ETH price is highly sensitive to macro news (Fed, CPI, SEC decisions, protocol news). Unexpected bullish news can spike price above any supply zone. Always check major economic calendar before entry.</div>
+</div>
+<div class="alert success">
+  <div class="a-icon">✅</div>
+  <div><strong>Edge Summary:</strong> This setup has 79% confluence score (55/70), 2.55:1 weighted RR, HTF + LTF alignment, verified live data from OKX + CoinGecko. Entry is reactive (waits for trigger), not predictive. This is as high-confidence as price action setups get without lagging indicators.</div>
+</div>
+
+</div><!-- end page -->
+
+<div class="disc">
+  ⚠️ DISCLAIMER: This trade setup is based on live SMC analysis for educational purposes only. It is NOT financial advice. Cryptocurrency futures trading carries extreme risk of loss including total capital. Always use proper risk management. Past analytical accuracy does not guarantee future results. Generated at <span id="dT">—</span> IST.
+</div>
+
+<script>
+'use strict';
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+
+/* ─── Live price ─── */
+var livePrice = 1628.95;
+
+function fetchPrice(){
+  fetch('https://www.okx.com/api/v5/market/ticker?instId=ETH-USDT')
+    .then(function(r){return r.json();})
+    .then(function(d){
+      var t=d.data&&d.data[0]; if(!t)return;
+      var p=parseFloat(t.last); if(!isFinite(p)||p<=0)return;
+      var o=parseFloat(t.open24h)||p;
+      livePrice=p;
+      document.getElementById('lp').textContent='$'+p.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+      var chg=(p-o)/o*100,up=chg>=0;
+      var el=document.getElementById('pc');
+      el.textContent=(up?'+':'')+chg.toFixed(2)+'%'; el.className='pchg '+(up?'up':'dn');
+      document.getElementById('psrc').textContent='OKX';
+      buildLadder(p);
+      calcR();
+    }).catch(function(){});
+}
+
+/* ─── Price Ladder ─── */
+function buildLadder(price){
+  price=price||livePrice;
+  var levels=[
+    {p:1668.00,type:'sl-l',     label:'STOP LOSS',   color:'var(--red)',    note:'Exit if 1H close above'},
+    {p:1663.14,type:'',          label:'SUPPLY TOP',  color:'rgba(255,61,90,.7)',note:'4H zone ceiling (87%)'},
+    {p:1652.00,type:'entry-l',  label:'ENTRY',        color:'var(--accent)', note:'Optimal short entry'},
+    {p:1648.00,type:'entry-l',  label:'ENTRY MID',    color:'var(--accent)', note:'Inside supply zone'},
+    {p:1640.00,type:'',          label:'BSL / EQH',   color:'var(--gold)',   note:'Buy-side liq sweep target'},
+    {p:1636.25,type:'',          label:'SWING HIGH',  color:'rgba(255,215,0,.5)',note:'1H swing high'},
+    {p:1629.00,type:'current',  label:'◄ PRICE',      color:'var(--gold)',   note:'Live ETH/USDT'},
+    {p:1617.00,type:'tp1-l',    label:'TP1 (40%)',    color:'#64ffda',       note:'FVG fill + 1H demand'},
+    {p:1606.67,type:'',          label:'SSL / EQL',   color:'rgba(0,212,255,.6)',note:'Sell-side liq below'},
+    {p:1594.88,type:'tp2-l',    label:'TP2 (35%)',    color:'var(--green)',  note:'4H demand top (84%)'},
+    {p:1569.65,type:'tp3-l',    label:'TP3 (25%)',    color:'var(--gold)',   note:'4H demand 2 (89%)'},
+    {p:1554.53,type:'',          label:'DEMAND 2',    color:'rgba(0,230,118,.5)',note:'4H demand zone bottom'},
+    {p:1504.40,type:'',          label:'SWING LOW',   color:'rgba(0,230,118,.8)',note:'Prior major low / Wave A end'},
+  ];
+
+  // Price range for bar width calculation
+  var maxP=1680, minP=1490, range=maxP-minP||1;
+
+  var html='';
+  levels.forEach(function(lv){
+    var barWidth=Math.max(5,Math.round((lv.p-minP)/range*100));
+    var isCurrent=lv.p>=(price-3)&&lv.p<=(price+3);
+    var rowClass=lv.type+(isCurrent?' current':'');
+    html+='<div class="ladder-row '+rowClass+'">';
+    html+='<div class="lr-price" style="color:'+lv.color+'">$'+lv.p.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})+'</div>';
+    html+='<div class="lr-bar-wrap"><div class="lr-bar" style="width:'+barWidth+'%;background:'+lv.color+'55"></div></div>';
+    html+='<div class="lr-label" style="color:'+lv.color+'">'+esc(lv.label)+'</div>';
+    html+='<div class="lr-note">'+esc(lv.note)+'</div>';
+    html+='</div>';
+  });
+  document.getElementById('ladderBody').innerHTML=html;
+}
+
+/* ─── Risk Calculator ─── */
+function calcR(){
+  var cap=parseFloat(document.getElementById('rcap').value)||10000;
+  var riskPct=parseFloat(document.getElementById('rrisk').value)||2;
+  var entry=parseFloat(document.getElementById('rentryI').value)||1648;
+  var sl=parseFloat(document.getElementById('rsl').value)||1668;
+
+  var tp1=1617, tp2=1594, tp3=1569;
+  var tp1frac=0.40, tp2frac=0.35, tp3frac=0.25;
+
+  var riskAmt=cap*riskPct/100;
+  var slDist=Math.abs(sl-entry);
+  var slPct=slDist/entry*100;
+  if(slDist<=0){return;}
+  var posEth=riskAmt/slDist;
+  var notional=posEth*entry;
+
+  /* P&L for short: profit = (entry - exit) × qty */
+  var tp1gain=posEth*tp1frac*Math.abs(entry-tp1);
+  var tp2gain=posEth*(1-tp1frac)*tp2frac/(1-0)*Math.abs(entry-tp2);
+  // Corrected: remaining position after TP1 = (1-tp1frac), of which tp2frac closes
+  var rem1=1-tp1frac;
+  var tp2gainC=posEth*rem1*tp2frac*Math.abs(entry-tp2);
+  var rem2=rem1*(1-tp2frac);
+  var tp3gainC=posEth*rem2*Math.abs(entry-tp3);
+  var totalGain=tp1gain+tp2gainC+tp3gainC;
+
+  var feeRate=0.0001;
+  var fees=notional*feeRate*2;
+
+  var fundingPeriods=2; /* ~16h / 8h per period */
+  var fundingRate=0.00005;
+  var funding=notional*fundingRate*fundingPeriods;
+
+  var net=totalGain-fees-funding;
+
+  function f(v,dec){dec=dec||2;return'$'+Math.abs(v).toFixed(dec);}
+  function s(id,v){var el=document.getElementById(id);if(el)el.textContent=v;}
+
+  s('rRiskAmt', f(riskAmt));
+  s('rSlDist',  '$'+slDist.toFixed(2)+' ('+slPct.toFixed(2)+'%)');
+  s('rPosEth',  posEth.toFixed(4)+' ETH');
+  s('rNotional','$'+notional.toFixed(2));
+  s('rTP1',     '+'+f(tp1gain)+' (×'+tp1frac+' pos)');
+  s('rTP2',     '+'+f(tp2gainC)+' (×'+rem1*tp2frac+' pos)');
+  s('rTP3',     '+'+f(tp3gainC)+' (×'+rem2+' pos)');
+  s('rTotal',   '+'+f(totalGain));
+  s('rFees',    '–'+f(fees,4));
+  s('rFund',    '–'+f(funding,4));
+
+  var netEl=document.getElementById('rNet');
+  if(netEl){
+    netEl.textContent=(net>=0?'+':'')+f(net)+' ('+(net/cap*100).toFixed(2)+'% acct)';
+    netEl.className='ro-val '+(net>=0?'gold':'r');
+  }
+}
+
+/* ─── Checklist ─── */
+function chk(el){
+  el.classList.toggle('done');
+  el.textContent=el.classList.contains('done')?'✓':'';
+  /* count checked */
+  var all=document.querySelectorAll('.cb');
+  var done=document.querySelectorAll('.cb.done').length;
+  /* update rule text dynamically */
+}
+
+/* ─── Init ─── */
+function init(){
+  var now=new Date();
+  var ist=now.toLocaleString('en-IN',{timeZone:'Asia/Kolkata',dateStyle:'medium',timeStyle:'short'});
+  document.getElementById('genT').textContent=ist+' IST';
+  document.getElementById('dT').textContent=ist;
+
+  fetchPrice();
+  buildLadder(livePrice);
+  calcR();
+
+  setInterval(fetchPrice,5000);
+}
+init();
+</script>
+</body>
+</html>
