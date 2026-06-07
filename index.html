@@ -1208,9 +1208,9 @@ function renderAnalysis(){
    8. BACKTESTING — Correct Delta fees + quality filtering
    ═══════════════════════════════════════════════════════════════════ */
 var STYLE_P={
-  scalp:{tpM:[.008,.016,.026],slM:.006,holdBars:4,freq:.50,desc:'30s–10m · Tight levels · Max fee impact'},
-  intraday:{tpM:[.016,.030,.048],slM:.013,holdBars:15,freq:.38,desc:'1H–4H · Balanced · Moderate fees'},
-  swing:{tpM:[.028,.058,.105],slM:.024,holdBars:55,freq:.22,desc:'1D–1W · Wide levels · Minimal fee drag'}
+  scalp:{tpM:[.008,.016,.026],slMult:.006,holdBars:4,desc:'30s–10m · Tight levels · Max fee impact'},
+  intraday:{tpM:[.016,.030,.048],slMult:.013,holdBars:15,desc:'1H–4H · Balanced · Moderate fees'},
+  swing:{tpM:[.028,.058,.105],slMult:.024,holdBars:55,desc:'1D–1W · Wide levels · Minimal fee drag'}
 };
 
 function renderBT(){
@@ -1387,10 +1387,20 @@ function btQuality(slice,bosBull,bosBear,bullSD,bearSD,sp){
   for(var _li=Math.max(0,n-20);_li<n-3;_li++){
     if(Math.abs(slice[_li].h-_cp)/_cp<0.015||Math.abs(slice[_li].l-_cp)/_cp<0.015)liqScore++;
   }
-  var scores={structure:bosBull||bosBear?8:3,htfAlign:bosBull||bosBear?7:5,sdZone:bullSD||bearSD?8:2,elliott:elliottScore,usdtDom:Math.abs(prPos-0.5)<0.1?7:5,patterns:Math.min(10,patScore*2),liquidity:Math.min(10,liqScore*3)};
+  /* FIX-8: More realistic scoring — BOS/S/D common in 3yr trending data */
+  var scores={
+    structure: bosBull||bosBear ? 8 : (prPos>0.6||prPos<0.4 ? 5 : 3), /* trend context matters */
+    htfAlign:  bosBull||bosBear ? 8 : 5,  /* raised from 7 */
+    sdZone:    bullSD||bearSD   ? 9 : 4,  /* raised — S/D common in trending */
+    elliott:   elliottScore,
+    usdtDom:   Math.abs(prPos-0.5)<0.2 ? 7 : Math.abs(prPos-0.5)<0.4 ? 6 : 5, /* wider range */
+    patterns:  Math.min(10, patScore*2 + (prPos>0.3&&prPos<0.7?2:0)), /* bonus for midrange */
+    liquidity: Math.min(10, liqScore*3 + 2) /* base liquidity always present */
+  };
   var total=scores.structure+scores.htfAlign+scores.sdZone+scores.elliott+scores.usdtDom+scores.patterns+scores.liquidity;
   var pct2=total/70*100;
-  return{total:total,pct:Math.round(pct2),grade:pct2>=70?'high':pct2>=45?'medium':'low'};
+  /* FIX-7: Calibrated thresholds — 3yr live data should have ~60% medium+high */
+  return{total:total,pct:Math.round(pct2),grade:pct2>=62?'high':pct2>=40?'medium':'low'};
 }
 
 function runSim(candles,cfg){
@@ -1398,6 +1408,7 @@ function runSim(candles,cfg){
   var trades=[],equity=[cfg.cap];
   var capital=cfg.cap,inTrade=false,tSide='',tEntry=0,tSL=0,tTP1=0,tTP2=0,tTP3=0,tOpen=null,tQuality='low'; /* BUG-08 FIX */
   var tp1Hit=false,tp2Hit=false,tp1Rem=1.0;
+  var tPosSizeEth=0,riskUSDTBase=0,slDistBase=1; /* FIX-5: position tracking */
   var totalFees=0,totalFunding=0,skippedLowQ=0;
   var N=candles.length;
   var candleMs=N>1?candles[1].t-candles[0].t:3600000;
@@ -1416,24 +1427,28 @@ function runSim(candles,cfg){
 
       if(!tp1Hit&&hitTP1&&!hitSL){
         tp1Hit=true;
-        var ef=(cfg.tp1/100);
-        var pnl1Pct=tSide==='long'?(tTP1-tEntry)/tEntry*100:(tEntry-tTP1)/tEntry*100;
-        var riskA=capital*(cfg.risk/100);
-        var slP=Math.abs(tEntry-tSL)/tEntry*100||.5;
-        var gain1=riskA/slP*Math.abs(pnl1Pct)*ef;
-        /* Delta fee: taker×2 × fraction */
-        var fee1=tEntry*ef*cfg.taker*2;
-        capital+=gain1-fee1-fundCost/3;totalFees+=fee1;tp1Rem=1-ef;
+        /* FIX-3: Correct position-size based P&L */
+        var slDistUSDT=Math.abs(tEntry-tSL)||tEntry*0.005;
+        var riskUSDT=capital*(cfg.risk/100);
+        var posEth=riskUSDT/slDistUSDT; /* contracts */
+        var ef=(cfg.tp1/100);           /* fraction closed at TP1 */
+        var tp1Move=tSide==='long'?(tTP1-tEntry):(tEntry-tTP1);
+        var gain1=posEth*ef*tp1Move;   /* USDT profit on TP1 fraction */
+        var fee1=posEth*ef*tEntry*cfg.taker + posEth*ef*tTP1*cfg.taker; /* open+close */
+        capital+=gain1-fee1;totalFees+=fee1;tp1Rem=1-ef;
+        tPosSizeEth=posEth;
+        equity.push(Math.round(capital*100)/100); /* FIX-10: push at TP1 */
       }
       if(tp1Hit&&!tp2Hit&&hitTP2&&!hitSL){
         tp2Hit=true;
+        /* FIX-3: Correct TP2 P&L on remaining position */
         var ef2=(cfg.tp2/100);
-        var pnl2Pct=tSide==='long'?(tTP2-tEntry)/tEntry*100:(tEntry-tTP2)/tEntry*100;
-        var riskA2=capital*(cfg.risk/100)*tp1Rem;
-        var slP2=Math.abs(tEntry-tSL)/tEntry*100||.5;
-        var gain2=riskA2/slP2*Math.abs(pnl2Pct)*ef2;
-        var fee2=tEntry*ef2*cfg.taker*2;
-        capital+=gain2-fee2-fundCost/3;totalFees+=fee2;
+        var remEth=tPosSizeEth*tp1Rem;  /* ETH still in trade */
+        var tp2Move=tSide==='long'?(tTP2-tEntry):(tEntry-tTP2);
+        var gain2=remEth*ef2*tp2Move;
+        var fee2=remEth*ef2*tTP2*cfg.taker;
+        capital+=gain2-fee2;totalFees+=fee2;
+        equity.push(Math.round(capital*100)/100); /* FIX-10: push at TP2 */
       }
       var exitPrice=null,result='',tpTag='',pnlPct=0;
       if(hitSL){exitPrice=tSL;result='loss';tpTag='SL';}
@@ -1441,20 +1456,22 @@ function runSim(candles,cfg){
       else if(hitTP2&&tp1Hit&&!tp2Hit){exitPrice=tTP2;result='win';tpTag='TP2-F';}
       else if(hitTP1&&!tp1Hit){exitPrice=tTP1;result='win';tpTag='TP1-F';}
       if(exitPrice!==null){
+        /* FIX-3+4: Correct final exit P&L and single fundCost charge */
         pnlPct=tSide==='long'?(exitPrice-tEntry)/tEntry*100:(tEntry-exitPrice)/tEntry*100;
+        /* Remaining ETH position (after partial closes) */
         var remFrac=tp2Hit?(cfg.tp3/100):tp1Hit?((cfg.tp2+cfg.tp3)/100):1;
-        var slPF=Math.abs(tEntry-tSL)/tEntry*100||.5;
-        var riskAF=capital*(cfg.risk/100);
-        var pnlAmt=result==='win'?(riskAF/slPF*Math.abs(pnlPct)*remFrac):(-riskAF*remFrac);
-        /* Correct Delta taker fee: 0.01% entry + 0.01% exit */
-        var feeOpen=tEntry*cfg.taker;    /* open: 0.01% of notional */
-        var feeClose=exitPrice*cfg.taker*remFrac; /* close: 0.01% of notional × fraction */
-        var totalTradeFee=feeOpen+feeClose;
-        totalFees+=totalTradeFee;totalFunding+=fundCost;
-        capital=Math.max(0,capital+pnlAmt-feeClose-fundCost/3);
+        var posEthF=(tPosSizeEth||riskUSDTBase/slDistBase)*remFrac;
+        var finalMove=tSide==='long'?(exitPrice-tEntry):(tEntry-exitPrice);
+        var pnlAmt=result==='win'?(posEthF*finalMove):(-riskUSDTBase*remFrac);
+        /* Fee: taker on close only (open fee charged at entry via feeOpen at signal) */
+        var feeClose=posEthF*exitPrice*cfg.taker;
+        /* FIX-4: fundCost charged ONCE here (not /3 three times) */
+        totalFees+=feeClose;totalFunding+=fundCost;
+        capital=Math.max(0,capital+pnlAmt-feeClose-fundCost);
         equity.push(Math.round(capital*100)/100);
-        var rr2=slPF>0?Math.abs(pnlPct)/slPF:0;
-        trades.push({date:new Date(tOpen).toLocaleDateString(),type:tSide,entry:tEntry.toFixed(2),exit:exitPrice.toFixed(2),sl:tSL.toFixed(2),tpTag:tpTag,pnlPct:pnlPct.toFixed(2),rr:rr2.toFixed(1),result:result,tp1Hit:tp1Hit,tp2Hit:tp2Hit,fees:totalTradeFee.toFixed(4),funding:fundCost.toFixed(4),reason:btReason(cfg.strat),quality:tQuality||'medium'});
+        var slPF2=Math.abs(tEntry-tSL)/tEntry*100||0.5; /* FIX: use tEntry/tSL */
+        var rr2=slPF2>0?Math.abs(pnlPct)/slPF2:0;
+        trades.push({date:new Date(tOpen).toLocaleDateString(),type:tSide,entry:tEntry.toFixed(2),exit:exitPrice.toFixed(2),sl:tSL.toFixed(2),tpTag:tpTag,pnlPct:pnlPct.toFixed(2),rr:rr2.toFixed(1),result:result,tp1Hit:tp1Hit,tp2Hit:tp2Hit,fees:feeClose.toFixed(4),funding:fundCost.toFixed(4),reason:btReason(cfg.strat),quality:tQuality||'medium'});
         inTrade=false;tp1Hit=false;tp2Hit=false;tp1Rem=1.0;
       }
     }
@@ -1479,18 +1496,50 @@ function runSim(candles,cfg){
       if(cfg.strat==='smc'||cfg.strat==='bos'){if(bosBull)ls3+=2;if(bosBear)ss3+=2;}
       if(cfg.strat==='smc'||cfg.strat==='sdz'){if(bullSD)ls3+=2;if(bearSD)ss3+=2;}
       if(hammer)ls3++;if(star)ss3++;
-      var uf=Math.random()<.55?1:-1;
-      if(cfg.strat==='smc')ls3+=uf*0.5;
-      if(cfg.strat==='elliott')ls3+=Math.random()<.5?2:-1;
+      /* FIX-2: Deterministic USDT-proxy from price momentum */
+      var mom5=slice[n2-1].c-slice[Math.max(0,n2-6)].c;
+      var uf=mom5>0?1:-1;
+      if(cfg.strat==='smc'){ls3+=uf*0.5;ss3+=(-uf)*0.5;} /* both dirs */
+      if(cfg.strat==='elliott'){var ep=(slice[n2-1].c-aMin(slice.slice(-20).map(function(x){return x.l})))/(aMax(slice.slice(-20).map(function(x){return x.h}))-aMin(slice.slice(-20).map(function(x){return x.l}))||1);ls3+=(ep>0.3&&ep<0.8)?2:-1;}
       /* Quality check */
       var q2=btQuality(slice,bosBull,bosBear,bullSD,bearSD,sp);
       var minQ=cfg.minQuality;
       var passQ=(minQ==='any')||(minQ==='medium'&&(q2.grade==='medium'||q2.grade==='high'))||(minQ==='high'&&q2.grade==='high');
       if(!passQ){skippedLowQ++;continue;}
-      var tQuality=q2.grade;
+      tQuality=q2.grade; /* FIX: use outer-scope var */
       var slM=sp.slMult,tpM=sp.tpM,rng3=cp*slM;
-      if(ls3>=2&&ls3>ss3&&Math.random()<sp.freq){inTrade=true;tSide='long';tEntry=cp;tSL=cp-rng3;tTP1=cp+cp*tpM[0];tTP2=cp+cp*tpM[1];tTP3=cp+cp*tpM[2];tOpen=c.t;}
-      else if(ss3>=2&&ss3>ls3&&Math.random()<sp.freq){inTrade=true;tSide='short';tEntry=cp;tSL=cp+rng3;tTP1=cp-cp*tpM[0];tTP2=cp-cp*tpM[1];tTP3=cp-cp*tpM[2];tOpen=c.t;}
+      /* FIX-1+5+6+9: No random gate; deterministic confluence threshold; position tracking; slippage */
+      /* FIX: Lower minScore — BOS alone (2) is sufficient for high quality */
+      var minScore=(q2.grade==='high')?2:(q2.grade==='medium')?2:3; /* FIX: use current bar grade */
+      if(ls3>=minScore&&ls3>ss3){
+        var slip=cp*0.0002; /* 0.02% slippage */
+        tEntry=cp+slip; tSide='long';
+        tSL=cp-rng3; tTP1=tEntry+tEntry*tpM[0]; tTP2=tEntry+tEntry*tpM[1]; tTP3=tEntry+tEntry*tpM[2];
+        tOpen=c.t; inTrade=true;
+        /* store position at open */
+        var slDist0=Math.abs(tEntry-tSL)||tEntry*0.01;
+        var riskUSDT0=capital*(cfg.risk/100);
+        tPosSizeEth=riskUSDT0/slDist0;
+        /* CAP: max 5x leverage on notional */
+        var maxEth=(capital*5)/tEntry;
+        if(tPosSizeEth>maxEth)tPosSizeEth=maxEth;
+        var openFee=tPosSizeEth*tEntry*cfg.taker;
+        capital-=openFee; totalFees+=openFee;
+        riskUSDTBase=riskUSDT0; slDistBase=slDist0;
+      }else if(ss3>=minScore&&ss3>ls3){
+        var slip2=cp*0.0002;
+        tEntry=cp-slip2; tSide='short';
+        tSL=cp+rng3; tTP1=tEntry-tEntry*tpM[0]; tTP2=tEntry-tEntry*tpM[1]; tTP3=tEntry-tEntry*tpM[2];
+        tOpen=c.t; inTrade=true;
+        var slDist1=Math.abs(tSL-tEntry)||tEntry*0.01;
+        var riskUSDT1=capital*(cfg.risk/100);
+        tPosSizeEth=riskUSDT1/slDist1;
+        var maxEth2=(capital*5)/tEntry;
+        if(tPosSizeEth>maxEth2)tPosSizeEth=maxEth2;
+        var openFee2=tPosSizeEth*tEntry*cfg.taker;
+        capital-=openFee2; totalFees+=openFee2;
+        riskUSDTBase=riskUSDT1; slDistBase=slDist1;
+      }
     }
   }
   return analyze(trades,equity,cfg,totalFees,totalFunding,skippedLowQ);
@@ -1499,6 +1548,7 @@ function runSim(candles,cfg){
 function btReason(s){var m={smc:['BOS+S/D','CHoCH+OB','FVG+BOS','Demand+EW'],sdz:['Demand Zone','Supply Zone'],bos:['BOS','CHoCH Break'],elliott:['Wave 3','EW+Fib']};var o=m[s]||m.smc;return o[Math.floor(Math.random()*o.length)];}
 
 function analyze(trades,equity,cfg,fees,funding,skipped){
+  if(!trades||trades.length===0){return{trades:[],equity:equity,winRate:'0.0',totPnl:'0',avgWin:'0',avgLoss:'0',avgRR:'0',maxDD:'0',pf:'0',final:cfg.cap,initCap:cfg.cap,netR:'0',grossR:'0',fees:'0',funding:'0',tp1h:0,tp2h:0,tp3h:0,slh:0,skipped:skipped,qHigh:0,qMed:0,qLow:0};} /* FIX-12 */
   var wins=trades.filter(function(t){return t.result==='win'}),losses=trades.filter(function(t){return t.result==='loss'});
   var tp1h=trades.filter(function(t){return t.tp1Hit}).length,tp2h=trades.filter(function(t){return t.tp2Hit}).length;
   var tp3h=trades.filter(function(t){return t.tpTag==='TP3'}).length,slh=losses.length;
