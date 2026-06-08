@@ -599,7 +599,8 @@ function calcR(){
   var riskPct=parseFloat(document.getElementById('rrisk').value)||2;
   var entry=parseFloat(document.getElementById('rentryI').value)||1648;
   var sl=parseFloat(document.getElementById('rsl').value)||1668;
-  var tp1=1617,tp2=1594,tp3=1569;
+  /* TP levels: live if entry set, else hardcoded reference values */
+  var tp1=entry*0.982, tp2=entry*0.970, tp3=entry*0.951; /* ~1.8%, 3%, 4.9% targets */
   var tp1c=0.40,tp2c=0.35,tp3c=0.25;
   var riskAmt=cap*riskPct/100;
   var slDist=Math.abs(sl-entry)||entry*0.01;
@@ -627,9 +628,9 @@ function calcR(){
   s('rFees','–'+f(fees,4));
   s('rFund','–'+f(funding,4));
   var netEl=document.getElementById('rNet');
-  if(netEl){netEl.textContent=(net>=0?'+':'')+f(net)+' ('+(net/cap*100).toFixed(2)+'% acct)';netEl.className='rcv '+(net>=0?'gold':'r');}
+  if(netEl){netEl.textContent=(net>=0?'+':'-')+'$'+Math.abs(net).toFixed(2)+' ('+(cap>0?((net/cap)*100).toFixed(2):'0.00')+'% acct)';netEl.className='rcv '+(net>=0?'gold':'r');}
   var rrEl=document.getElementById('rrNet');
-  if(rrEl)rrEl.textContent='~+'+(net/cap*100).toFixed(1)+'% acct';
+  if(rrEl)rrEl.textContent='~'+(cap>0?((net/cap)*100>=0?'+':'')+((net/cap)*100).toFixed(1):'—')+'% acct';
 }
 
 function chk(el){el.classList.toggle('done');el.textContent=el.classList.contains('done')?'✓':'';}

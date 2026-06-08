@@ -113,7 +113,7 @@ body{
 /* ════════════════════════════════════════
    MAIN WORKSPACE — fills remaining height
 ════════════════════════════════════════ */
-.workspace{flex:1;overflow:hidden;display:flex;min-height:0;}
+.workspace{flex:1;overflow:hidden;display:flex;min-height:0;position:relative;}
 
 /* ════════════════════════════════════════
    TRADING VIEW — new centred layout
@@ -440,8 +440,17 @@ body{
 /* ════════════════════════════════════════
    PAGE VIEWS — Analysis / Backtest
 ════════════════════════════════════════ */
-.page{display:none;width:100%;height:100%;overflow-y:auto;padding:18px;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+.page{
+  display:none;
+  position:absolute;
+  top:0;left:0;right:0;bottom:0;
+  overflow-y:auto;
+  padding:18px;
+  scrollbar-width:thin;
+  scrollbar-color:var(--border) transparent;
+}
 .page.active{display:block}
+
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .acard{background:var(--panel);border:1px solid var(--border);border-radius:var(--r12);overflow:hidden}
 .acard.full{grid-column:1/-1}
@@ -825,7 +834,7 @@ var S={
   supplyZ:[],demandZ:[],liqLevels:[],patterns:[],ms:{},
   loaded:false,source:'—',
   /* Backtesting config */
-  btStyle:'swing',
+  btStyle:'intraday', /* matches renderBT default active style */
   btCfg:{},
   /* ── Auto-calibration state ─────────────────────────────────────── */
   calibrated:{},      /* style → {tpM:[],slMult,minScore,wr,pf,calibAt} */
@@ -1644,11 +1653,7 @@ function renderSig(){
   /* FIX-9: Record signal generation time for freshness display */
   S.lastSignalTime=Date.now();
   S.lastSignalTF=S.tf;
-  var freshEl=document.getElementById('sigFreshness');
-  if(freshEl){
-    freshEl.textContent=S.tf.toUpperCase()+' signal · Price: '+fmt(S.price)+' · '+new Date().toLocaleTimeString();
-    freshEl.style.color='var(--green)';
-  }
+  /* sigFreshness is now properly built in the h+= HTML above — no overwrite needed */
 }
 
 
@@ -1714,6 +1719,7 @@ function renderRight(){
 
 
 function renderAnalysis(){
+  if(!S.ms||!S.ms.trend){var _av=document.getElementById('analysisView');if(_av)_av.innerHTML='<div style="padding:40px;text-align:center;color:var(--text2)"><div class="sp" style="margin:0 auto 12px"></div>Loading analysis — fetching candles…</div>';return;}
   var ms=S.ms,ew=S.ew,p=S.price,q=S.quality;
   var bl={bull:'⬆ BULLISH',bear:'⬇ BEARISH',neut:'↔ NEUTRAL'};
   var mtfd=[
@@ -1792,7 +1798,13 @@ var STYLE_P={
 };
 
 function renderBT(){
-  if(S._btRendered&&document.getElementById('btRes')){return;} /* BUG-13 FIX */
+  /* If UI already rendered, skip rebuild — just reset result state */
+  if(S._btRendered&&document.getElementById('bpWrap')){
+    var _r=document.getElementById('btRes');if(_r)_r.style.display='none';
+    var _bw=document.getElementById('bpWrap');if(_bw)_bw.style.display='none';
+    var _st=document.getElementById('btStat');if(_st)_st.textContent='';
+    return;
+  }
   S._btRendered=true;
   var _backtestingViewEl=document.getElementById('backtestingView');if(_backtestingViewEl)_backtestingViewEl.innerHTML=
     '<div style="max-width:1300px">'
@@ -1867,11 +1879,14 @@ function renderBT(){
 }
 
 function validTP(){
-  var t1=+document.getElementById('cTP1').value||0;
-  var t2=+document.getElementById('cTP2').value||0;
-  var t3=+document.getElementById('cTP3').value||0;
+  var _e1=document.getElementById('cTP1'),_e2=document.getElementById('cTP2'),_e3=document.getElementById('cTP3');
+  if(!_e1||!_e2||!_e3)return;
+  var t1=+_e1.value||0;
+  var t2=+_e2.value||0;
+  var t3=+_e3.value||0;
   var sum=t1+t2+t3;var ok=Math.abs(sum-100)<1;
   var bar=document.getElementById('tpBar'),msg=document.getElementById('tpMsg');
+  if(!bar||!msg)return;
   if(bar)bar.style.cssText='width:'+Math.min(100,sum)+'%;background:'+(ok?'var(--green)':sum>100?'var(--red)':'var(--warn)');
   if(msg)msg.innerHTML=(ok?'<span style="color:var(--green)">✓ TP sizes: '+sum.toFixed(0)+'% ('+t1+'% + '+t2+'% + '+t3+'%)</span>':'<span style="color:var(--warn)">⚠ Sum: '+sum.toFixed(0)+'% — must equal 100%</span>');
 }
@@ -1881,20 +1896,21 @@ function selStyle(style){
   ['scalp','intraday','swing'].forEach(function(s){var el=document.getElementById('sc-'+s);if(el)el.classList.toggle('active',s===style);});
 }
 
+function _gv(id,def){var el=document.getElementById(id);return el?+el.value||def:def;}
 function readCfg(){
   return{
-    cap:Math.max(100,+document.getElementById('cCap').value||10000),
-    risk:Math.min(10,Math.max(.1,+document.getElementById('cRisk').value||2)),
-    tp1:+document.getElementById('cTP1').value||40,
-    tp2:+document.getElementById('cTP2').value||35,
-    tp3:+document.getElementById('cTP3').value||25,
-    maker:(+document.getElementById('cMaker').value||.010)/100,
-    taker:(+document.getElementById('cTaker').value||.010)/100,
-    funding:(+document.getElementById('cFund').value||.005)/100,
-    strat:document.getElementById('cStrat').value,
-    period:document.getElementById('cPeriod').value,
-    tf:document.getElementById('cTF').value,
-    minQuality:document.getElementById('cQual').value,
+    cap:Math.max(100,_gv('cCap',10000)),
+    risk:Math.min(10,Math.max(.1,_gv('cRisk',2))),
+    tp1:_gv('cTP1',40),
+    tp2:_gv('cTP2',35),
+    tp3:_gv('cTP3',25),
+    maker:(_gv('cMaker',.010))/100,
+    taker:(_gv('cTaker',.010))/100,
+    funding:(_gv('cFund',.005))/100,
+    strat:(function(){var e=document.getElementById('cStrat');return e?e.value:'smc';})(),
+    period:(function(){var e=document.getElementById('cPeriod');return e?e.value:'3y';})(),
+    tf:(function(){var e=document.getElementById('cTF');return e?e.value:'4h';})(),
+    minQuality:(function(){var e=document.getElementById('cQual');return e?e.value:'high';})(),
     style:S.btStyle||'intraday'
   };
 }
@@ -1904,15 +1920,22 @@ function runBT(){
   var sum=cfg.tp1+cfg.tp2+cfg.tp3;
   if(Math.abs(sum-100)>1){alert('TP% must sum to 100. Currently: '+sum.toFixed(0)+'%');return;}
   S.btCfg=cfg;
-  var bpWrap=document.getElementById('bpWrap'),bpBar=document.getElementById('bpBar');
-  var stat=document.getElementById('btStat'),res=document.getElementById('btRes');
+  /* Ensure backtesting UI is rendered before accessing its elements */
+  renderBT();
+  var bpWrap=document.getElementById('bpWrap');
+  var bpBar=document.getElementById('bpBar');
+  var stat=document.getElementById('btStat');
+  var res=document.getElementById('btRes');
+  var btnExp=document.getElementById('btnExp');
+  if(!bpWrap||!bpBar||!stat||!res){var _bst=document.getElementById('btStat');if(_bst)_bst.textContent='⚠️ UI error — click Reset and try again.';return;}
   res.style.display='none';bpWrap.style.display='block';bpBar.style.width='0%';
-  document.getElementById('btnExp').style.display='none';
+  if(btnExp)btnExp.style.display='none';
   var msgs=['Generating '+cfg.period+' ETH/USDT history…','Detecting supply & demand zones…','Applying BOS & CHoCH rules…','Elliott Wave pivot scanning…','USDT dominance correlation…','Grading signal quality…','Filtering by '+cfg.minQuality+' quality…','Running trade simulation…','Calculating partial exits…','Applying Delta fees (0.01% maker/taker)…','Computing funding costs…','Calibrating signal thresholds…','Computing performance metrics…'];
   var steps=26,step=0;
   function doStep(){
-    step++;bpBar.style.width=Math.round(step/steps*100)+'%';
-    stat.textContent=msgs[Math.min(step-1,msgs.length-1)];
+    step++;
+    if(bpBar)bpBar.style.width=Math.round(step/steps*100)+'%';
+    if(stat)stat.textContent=msgs[Math.min(step-1,msgs.length-1)];
     if(step<steps){setTimeout(doStep,65);}
     else{
       var yrs=cfg.period==='3y'?3:cfg.period==='2y'?2:1;
@@ -1922,12 +1945,12 @@ function runBT(){
       /* ── AUTO-CALIBRATE: derive optimal params from results ── */
       var calib=autoCalibrate(results,cfg);
       S.btCalib=calib;
-      bpWrap.style.display='none';
+      if(bpWrap)bpWrap.style.display='none';
       var wrNum=parseFloat(results.winRate);
       var wrIcon=wrNum>=62?'✅':wrNum>=55?'⚠️':'❌';
-      stat.textContent=wrIcon+' '+results.trades.length+' trades · WR: '+results.winRate+'% · '+cfg.style.toUpperCase()+' recalibrated';
-      res.style.display='block';
-      document.getElementById('btnExp').style.display='inline-block';
+      if(stat)stat.textContent=wrIcon+' '+results.trades.length+' trades · WR: '+results.winRate+'% · '+cfg.style.toUpperCase()+' recalibrated';
+      if(res)res.style.display='block';
+      var _bEx=document.getElementById('btnExp');if(_bEx)_bEx.style.display='inline-block';
       renderBTRes(results,cfg,calib);
       updateCalibStatus(calib,cfg.style);
     }
@@ -1937,10 +1960,10 @@ function runBT(){
 
 function genHist(years,tf){
   /* v5.1: Realistic ETH-like data with long trending phases for accurate BT */
-  var msMap={'15m':900000,'1h':3600000,'4h':14400000,'1d':86400000};
+  var msMap={'15m':900000,'1h':3600000,'4h':14400000,'1d':86400000,'1w':604800000};
   var ms=msMap[tf]||14400000;
   var now=Date.now(),start=now-years*365*24*3600*1000;
-  var count=Math.floor((now-start)/ms);
+  var count=Math.min(Math.floor((now-start)/ms), 5000); /* cap at 5000 bars for performance */
   /* ETH price milestones 2023-2026 — realistic cycle */
   var milestones=[
     {p:0,v:1200},{p:.06,v:1450},{p:.14,v:2100},{p:.22,v:1680},
@@ -2240,7 +2263,7 @@ function runSim(candles,cfg){
   return analyze(trades,equity,cfg,totalFees,totalFunding,skippedLowQ);
 }
 
-function btReason(s){var m={smc:['BOS+S/D','CHoCH+OB','FVG+BOS','Demand+EW'],sdz:['Demand Zone','Supply Zone'],bos:['BOS','CHoCH Break'],elliott:['Wave 3','EW+Fib']};var o=m[s]||m.smc;return o[Math.floor(_sr()*o.length)];}
+var _btRC=0;function btReason(s){var m={smc:['BOS+S/D','CHoCH+OB','FVG+BOS','Demand+EW'],sdz:['Demand Zone','Supply Zone'],bos:['BOS','CHoCH Break'],elliott:['Wave 3','EW+Fib']};var o=m[s]||m.smc;return o[(_btRC++)%o.length];}
 
 function analyze(trades,equity,cfg,fees,funding,skipped){
   if(!trades||trades.length===0){return{trades:[],equity:equity,winRate:'0.0',totPnl:'0',avgWin:'0',avgLoss:'0',avgRR:'0',maxDD:'0',pf:'0',final:cfg.cap,initCap:cfg.cap,netR:'0',grossR:'0',fees:'0',funding:'0',tp1h:0,tp2h:0,tp3h:0,slh:0,skipped:skipped,qHigh:0,qMed:0,qLow:0};} /* FIX-12 */
@@ -2537,7 +2560,7 @@ function renderEqChart(r){
 }
 
 function exportCSV(){
-  if(!S.btResults)return;
+  if(!S.btResults||!S.btResults.trades||!S.btResults.trades.length){alert('No backtest results to export. Run a backtest first.');return;}
   var rows=['Date,Type,Quality,Entry,Exit,SL,TP,P&L%,RR,Fees,Reason,Result'];
   S.btResults.trades.forEach(function(t){rows.push([t.date,t.type,t.quality||'',t.entry,t.exit,t.sl,t.tpTag,t.pnlPct,t.rr,t.fees,t.reason,t.result].join(','));});
   var blob=new Blob([rows.join('\n')],{type:'text/csv'});
@@ -2546,6 +2569,8 @@ function exportCSV(){
 
 function resetBT(){
   S._btRendered=false;
+  S._btRunning=false;
+  /* Rebuild the UI fresh next time */
   var res=document.getElementById('btRes');if(res)res.style.display='none';
   var stat=document.getElementById('btStat');if(stat)stat.textContent='';
   var exp=document.getElementById('btnExp');if(exp)exp.style.display='none';
@@ -2594,9 +2619,8 @@ function switchView(v){
   if(tv)tv.style.display=v==='trading'?'flex':'none';
   if(av){av.style.display=v==='analysis'?'block':'none';av.className=v==='analysis'?'page active':'page';}
   if(bv){bv.style.display=v==='backtesting'?'block':'none';bv.className=v==='backtesting'?'page active':'page';}
-  if(v==='analysis')renderAnalysis();
+  if(v==='analysis'){computeAll();renderAnalysis();}
   if(v==='backtesting'){
-    /* Always show the backtest panel; renderBT guard prevents DOM rebuild if running */
     renderBT();
   }
 }
@@ -2635,11 +2659,11 @@ function init(){
   if(S._candleInterval)clearInterval(S._candleInterval);
   if(S._domInterval)clearInterval(S._domInterval);
 
-  document.getElementById('analysisView').style.display='none';
-  document.getElementById('backtestingView').style.display='none';
-  var _tvSV=document.getElementById('tradingView');if(_tvSV)_tvSV.style.display='grid';
+  var _aVi=document.getElementById('analysisView');if(_aVi)_aVi.style.display='none';
+  var _bVi=document.getElementById('backtestingView');if(_bVi)_bVi.style.display='none';
+  var _tvSV=document.getElementById('tradingView');if(_tvSV)_tvSV.style.display='flex';
 
-  fetchPrice().then(function(){return fetchCandles(S.tf);}).then(function(){fetchUSDTDom();renderRight();});
+  fetchPrice().then(function(){return fetchCandles(S.tf);}).then(function(){fetchUSDTDom();renderRight();}).catch(function(){renderRight();});
   /* FIX-11: ResizeObserver for canvas-wrap — handles flex resize properly */
   if(typeof ResizeObserver !== 'undefined'){
     S._resizeObs=new ResizeObserver(function(){if(S.loaded&&!document.hidden){requestAnimationFrame(drawChart);}});
@@ -2661,11 +2685,11 @@ function init(){
       if(!S._priceInterval)S._priceInterval=setInterval(function(){fetchPrice();},3000);
       if(!S._candleInterval)S._candleInterval=setInterval(function(){
         var _tv2=document.getElementById('tradingView');
-        if(_tv2&&_tv2.style.display!=='none'&&!document.hidden)fetchCandles(S.tf);
+        if(!document.hidden&&S.loaded)fetchCandles(S.tf);
       },60000);
     }
   });
-  S._candleInterval=setInterval(function(){var _tv=document.getElementById('tradingView');if(_tv&&_tv.style.display!=='none'&&!document.hidden)fetchCandles(S.tf);},60000);;
+  S._candleInterval=setInterval(function(){var _tv=document.getElementById('tradingView');if(!document.hidden&&S.loaded)fetchCandles(S.tf);},60000);
 }
 /* ═══════════════════════════════════════════════════════════════════
    TRADINGVIEW LIVE CHART — BINANCE:ETHUSDT
