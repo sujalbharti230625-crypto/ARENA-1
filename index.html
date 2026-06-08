@@ -113,7 +113,7 @@ body{
 /* ════════════════════════════════════════
    MAIN WORKSPACE — fills remaining height
 ════════════════════════════════════════ */
-.workspace{flex:1;overflow:hidden;display:flex;min-height:0;height:0;}
+.workspace{flex:1;overflow:hidden;display:flex;min-height:0;}
 
 /* ════════════════════════════════════════
    TRADING VIEW — new centred layout
@@ -124,9 +124,10 @@ body{
 #tradingView{
   display:flex;
   width:100%;
-  height:100%; /* fills workspace */
+  height:100%;
   min-height:0;
   overflow:hidden;
+  position:relative;
 }
 
 /* Left sidebar — signals */
@@ -145,11 +146,12 @@ body{
 /* Center — chart area (dominant) */
 .chart-center{
   flex:1;
-  display:flex;flex-direction:column;
+  /* Use display:grid so children get definite heights from the grid */
+  display:grid;
+  grid-template-rows:38px 1fr; /* toolbar:38px fixed, rest for chart-stack */
   overflow:hidden;
   min-width:0;
-  min-height:0;   /* allow shrinking */
-  height:100%;    /* definite height for flex children */
+  min-height:0;
 }
 
 /* Right sidebar — market intel */
@@ -177,8 +179,8 @@ body{
 /* ── Chart toolbar ── */
 .chart-toolbar{
   height:38px;background:var(--bg3);border-bottom:1px solid var(--border);
-  padding:0 12px;display:flex;align-items:center;gap:6px;flex-shrink:0;
-  overflow-x:auto;
+  padding:0 12px;display:flex;align-items:center;gap:6px;
+  overflow-x:auto;overflow-y:hidden;
 }
 .tf-btn{
   padding:3px 9px;border-radius:var(--r6);cursor:pointer;
@@ -200,19 +202,21 @@ body{
 
 /* ── Dual chart area ── */
 .chart-stack{
-  flex:1;
-  display:flex;flex-direction:column;
+  /* This cell gets the 1fr row from chart-center grid */
+  display:grid;
+  grid-template-rows:55fr 6px 45fr; /* SMC:55%, resize:6px, TV:45% */
   overflow:hidden;
   min-height:0;
   position:relative;
-  height:100%;   /* ensure definite height for % children */
 }
 
 /* SMC price action canvas — top, takes ~55% */
 .canvas-wrap{
-  flex:11;       /* 55% ratio via flex-grow (11/(11+9)=55%) */
-  position:relative;overflow:hidden;background:var(--bg0);
-  min-height:200px; /* ensure SMC chart is always visible */
+  /* Grid child - gets 55fr from chart-stack grid */
+  position:relative;
+  overflow:hidden;
+  background:var(--bg0);
+  min-height:0; /* grid handles sizing */
 }
 #priceCanvas{
   display:block;
@@ -236,9 +240,15 @@ body{
 
 /* Resize handle between charts */
 .resize-handle{
-  height:6px;background:var(--bg3);border-top:1px solid var(--border);border-bottom:1px solid var(--border);
-  cursor:row-resize;flex-shrink:0;display:flex;align-items:center;justify-content:center;
-  user-select:none;transition:background .15s;position:relative;z-index:10;
+  /* Grid child - gets the 6px fixed row */
+  height:6px; /* explicit for grid */
+  background:var(--bg3);
+  border-top:1px solid var(--border);
+  border-bottom:1px solid var(--border);
+  cursor:row-resize;
+  display:flex;align-items:center;justify-content:center;
+  user-select:none;transition:background .15s;
+  position:relative;z-index:10;
 }
 .resize-handle::before{
   content:'⋯';color:var(--border2);font-size:10px;letter-spacing:2px;
@@ -248,8 +258,11 @@ body{
 
 /* TradingView panel — bottom, takes ~45% */
 .tv-wrap{
-  flex:9;        /* 45% ratio via flex-grow (9/(11+9)=45%) */
-  display:flex;flex-direction:column;overflow:hidden;min-height:120px;
+  /* Grid child - gets 45fr from chart-stack grid */
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  min-height:0; /* grid handles sizing */
 }
 .tv-bar{
   height:30px;background:var(--bg3);border-bottom:1px solid var(--border);
@@ -2504,18 +2517,25 @@ function setTVTF(interval,btn){
     if(!cw||!tv)return;
     _drag=true; _startY=e.touches?e.touches[0].clientY:e.clientY;
     _h1=cw.offsetHeight; _h2=tv.offsetHeight;
-    document.body.style.cssText+='cursor:row-resize!important;user-select:none';
+    document.body.style.cursor='row-resize';
+    document.body.style.userSelect='none';
     e.preventDefault();
   }
   function onMove(e){
     if(!_drag)return;
     var y=e.touches?e.touches[0].clientY:e.clientY;
     var dy=y-_startY;
-    var cw=document.getElementById('chartWrap'),tv=document.getElementById('tvPanel');
-    if(!cw||!tv)return;
-    var n1=Math.max(100,_h1+dy),n2=Math.max(80,_h2-dy);
-    cw.style.flex='none'; cw.style.height=n1+'px';
-    tv.style.height=n2+'px';
+    /* FIX: Update grid-template-rows on chart-stack (CSS Grid parent) */
+    var stack=document.querySelector('.chart-stack');
+    if(!stack)return;
+    var totalH=stack.offsetHeight;
+    if(totalH<100)return;
+    var smc=Math.max(100,_h1+dy);
+    var tv=Math.max(80,_h2-dy);
+    /* Clamp to available space */
+    var sum=smc+6+tv;
+    if(sum>totalH){var ratio=totalH/sum;smc=Math.floor(smc*ratio);tv=Math.floor(tv*ratio);}
+    stack.style.gridTemplateRows=smc+'px 6px '+tv+'px';
     if(S.loaded)requestAnimationFrame(drawChart);
   }
   function onUp(){
