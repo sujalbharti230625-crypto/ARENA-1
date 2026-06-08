@@ -113,7 +113,7 @@ body{
 /* ════════════════════════════════════════
    MAIN WORKSPACE — fills remaining height
 ════════════════════════════════════════ */
-.workspace{flex:1;overflow:hidden;display:flex;min-height:0}
+.workspace{flex:1;overflow:hidden;display:flex;min-height:0;height:0;}
 
 /* ════════════════════════════════════════
    TRADING VIEW — new centred layout
@@ -122,34 +122,46 @@ body{
    Intel panel → right sidebar (collapsible)
 ════════════════════════════════════════ */
 #tradingView{
-  display:flex;width:100%;height:100%;
+  display:flex;
+  width:100%;
+  height:100%; /* fills workspace */
+  min-height:0;
   overflow:hidden;
 }
 
 /* Left sidebar — signals */
 .sidebar-l{
-  width:280px;flex-shrink:0;
+  width:280px;
+  flex-shrink:0;
   background:var(--panel);
   border-right:1px solid var(--border);
   display:flex;flex-direction:column;
   overflow:hidden;
   transition:width .25s ease;
+  min-height:0; /* prevents flex overflow */
 }
 .sidebar-l.collapsed{width:0;border:none}
 
 /* Center — chart area (dominant) */
 .chart-center{
-  flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;
+  flex:1;
+  display:flex;flex-direction:column;
+  overflow:hidden;
+  min-width:0;
+  min-height:0;   /* allow shrinking */
+  height:100%;    /* definite height for flex children */
 }
 
 /* Right sidebar — market intel */
 .sidebar-r{
-  width:252px;flex-shrink:0;
+  width:252px;
+  flex-shrink:0;
   background:var(--panel);
   border-left:1px solid var(--border);
   display:flex;flex-direction:column;
   overflow:hidden;
   transition:width .25s ease;
+  min-height:0;
 }
 .sidebar-r.collapsed{width:0;border:none}
 
@@ -188,20 +200,28 @@ body{
 
 /* ── Dual chart area ── */
 .chart-stack{
-  flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0;
+  flex:1;
+  display:flex;flex-direction:column;
+  overflow:hidden;
+  min-height:0;
   position:relative;
+  height:100%;   /* ensure definite height for % children */
 }
 
 /* SMC price action canvas — top, takes ~55% */
 .canvas-wrap{
-  flex:0 0 55%;position:relative;overflow:hidden;background:var(--bg0);
-  min-height:120px;
+  flex:11;       /* 55% ratio via flex-grow (11/(11+9)=55%) */
+  position:relative;overflow:hidden;background:var(--bg0);
+  min-height:200px; /* ensure SMC chart is always visible */
 }
 #priceCanvas{
-  display:block;position:absolute;inset:0;width:100%;height:100%;
-  image-rendering:crisp-edges;     /* Firefox */
-  image-rendering:-webkit-optimize-contrast; /* Safari */
-  image-rendering:pixelated;       /* Chrome — prevents bilinear upscale */
+  display:block;
+  position:absolute;
+  top:0;left:0;right:0;bottom:0; /* explicit TRBL instead of inset for compat */
+  width:100%;height:100%;
+  image-rendering:crisp-edges;
+  image-rendering:-webkit-optimize-contrast;
+  image-rendering:pixelated;
 }
 .chart-placeholder{
   position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
@@ -228,7 +248,8 @@ body{
 
 /* TradingView panel — bottom, takes ~45% */
 .tv-wrap{
-  flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:80px;
+  flex:9;        /* 45% ratio via flex-grow (9/(11+9)=45%) */
+  display:flex;flex-direction:column;overflow:hidden;min-height:120px;
 }
 .tv-bar{
   height:30px;background:var(--bg3);border-bottom:1px solid var(--border);
@@ -243,7 +264,13 @@ body{
 .tv-tf-btn{padding:2px 7px;border-radius:var(--r6);cursor:pointer;font-size:.6rem;font-weight:700;color:var(--text2);background:transparent;border:1px solid transparent;transition:all .13s}
 .tv-tf-btn:hover{color:var(--text);border-color:var(--border2)}
 .tv-tf-btn.active{background:rgba(255,215,0,.1);border-color:rgba(255,215,0,.25);color:var(--gold)}
-.tv-inner{flex:1;position:relative;overflow:hidden;background:var(--bg0)}
+.tv-inner{
+  flex:1;
+  position:relative;
+  overflow:hidden;
+  background:var(--bg0);
+  min-height:0;
+}
 .tv-loader{
   position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
   background:rgba(2,6,8,.92);backdrop-filter:blur(4px);
@@ -1133,7 +1160,8 @@ function drawChart(){
   var wrap=document.getElementById('chartWrap');
   if(!canvas||!wrap)return;
   var W=wrap.offsetWidth,H=wrap.offsetHeight;
-  if(W<10||H<10){setTimeout(drawChart,80);return;}
+  /* FIX-12: If container has no size yet (flex hasn't resolved), retry */
+  if(W<10||H<10||!isFinite(W)||!isFinite(H)){setTimeout(drawChart,100);return;}
   /* ── DPR-aware rendering for crisp HiDPI/Retina display ── */
   var dpr=Math.min(window.devicePixelRatio||1, 3); /* cap at 3x */
   canvas.width  = Math.floor(W * dpr);
@@ -2299,7 +2327,13 @@ function init(){
   document.getElementById('tradingView').style.display='grid';
 
   fetchPrice().then(function(){return fetchCandles(S.tf);}).then(function(){fetchUSDTDom();renderRight();});
-  window.addEventListener('resize',dbc(function(){if(S.loaded)requestAnimationFrame(drawChart);},150)); /* BUG-04 FIX */
+  /* FIX-11: ResizeObserver for canvas-wrap — handles flex resize properly */
+  if(typeof ResizeObserver !== 'undefined'){
+    var _ro=new ResizeObserver(function(){if(S.loaded)requestAnimationFrame(drawChart);});
+    var cw=document.getElementById('chartWrap');
+    if(cw)_ro.observe(cw);
+  }
+  window.addEventListener('resize',dbc(function(){if(S.loaded)requestAnimationFrame(drawChart);},150));
   S._priceInterval=setInterval(function(){fetchPrice().then(function(){fetchUSDTDom();if(S.loaded)requestAnimationFrame(drawChart);});},5000); /* BUG-11 FIX */
   S._candleInterval=setInterval(function(){if(document.getElementById('tradingView').style.display!=='none')fetchCandles(S.tf);},60000);
 }
@@ -2353,7 +2387,7 @@ function initTVWidget(interval){
 
   var iframe=document.createElement('iframe');
   iframe.src=iframeURL;
-  iframe.style.cssText='width:100%;height:100%;border:none;display:block;';
+  iframe.style.cssText='width:100%;height:100%;border:none;display:block;position:absolute;top:0;left:0;'; /* FIX-13 */
   iframe.allowFullscreen=true;
   iframe.scrolling='no';
   iframe.frameBorder='0';
