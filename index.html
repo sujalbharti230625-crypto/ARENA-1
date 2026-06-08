@@ -585,6 +585,8 @@ body{
 .qtag.high{background:rgba(0,230,118,.15);color:var(--green)}
 .qtag.medium{background:rgba(255,152,0,.15);color:var(--warn)}
 .qtag.low{background:rgba(255,61,90,.12);color:var(--red)}
+#calibBadge{animation:fadeInDown .4s ease}
+@keyframes fadeInDown{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
 /* also alias old bt-h sub classes */
 .bt-h .bt-title{font-size:1rem;font-weight:900;color:#fff}
 .bt-h .bt-sub{font-size:.7rem;color:var(--text2);margin-top:2px}
@@ -804,13 +806,13 @@ body{
    ═══════════════════════════════════════════════════════════════════ */
 
 /* ── Utilities ── */
-function aMax(a){if(!a||!a.length)return 0;var m=a[0];for(var i=1;i<a.length;i++)if(a[i]>m)m=a[i];return m}
-function aMin(a){if(!a||!a.length)return 0;var m=a[0];for(var i=1;i<a.length;i++)if(a[i]<m)m=a[i];return m}
+function aMax(a){if(!a||!a.length)return 0;var m=a[0];for(var i=1;i<a.length;i++)if(isFinite(a[i])&&a[i]>m)m=a[i];return isFinite(m)?m:0}
+function aMin(a){if(!a||!a.length)return 0;var m=a[0];for(var i=1;i<a.length;i++)if(isFinite(a[i])&&a[i]<m)m=a[i];return isFinite(m)?m:0}
 function dbc(fn,ms){var t;return function(){clearTimeout(t);t=setTimeout(fn,ms)}}
 function fmt(v,d){d=d===undefined?2:d;var n=Number(v);if(!isFinite(n)||isNaN(n))return'—';return'$'+n.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d})}
 function fmtN(v,d){d=d===undefined?2:d;var n=Number(v);if(!isFinite(n)||isNaN(n))return'—';return n.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d})}
 function pctFmt(v){return(v>=0?'+':'')+Number(v).toFixed(2)+'%'}
-function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function esc(s){if(s===null||s===undefined)return'';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 
 /* ── State ── */
 var S={
@@ -824,7 +826,10 @@ var S={
   loaded:false,source:'—',
   /* Backtesting config */
   btStyle:'swing',
-  btCfg:{}
+  btCfg:{},
+  /* ── Auto-calibration state ─────────────────────────────────────── */
+  calibrated:{},      /* style → {tpM:[],slMult,minScore,wr,pf,calibAt} */
+  scoreThresh:{scalp:50,intraday:50,swing:50}
 };
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -857,12 +862,12 @@ function fetchPrice(){
       S.price=p; S.open24=parseFloat(t.open24h)||p;
       S.high24=parseFloat(t.high24h)||p; S.low24=parseFloat(t.low24h)||p;
       S.vol24=parseFloat(t.vol24h)||0; S.source='OKX';
-      document.getElementById('sOKX').textContent='Live ✓'; document.getElementById('sOKX').style.color='var(--green)';
-      document.getElementById('hSrc').textContent='OKX'; var _st=document.getElementById('ctSrc');if(_st)_st.textContent='⬤ OKX ETH-USDT';
+      var _sOKX=document.getElementById('sOKX');if(_sOKX){_sOKX.textContent='Live ✓';_sOKX.style.color='var(--green)';}
+      var _hSrc0=document.getElementById('hSrc');if(_hSrc0)_hSrc0.textContent='OKX'; var _st=document.getElementById('ctSrc');if(_st)_st.textContent='⬤ OKX ETH-USDT';
       updateHeader();
       /* FIX-3: Sync live price into forming candle then recompute signals */
       syncLivePriceToCandles();
-      if(S.loaded&&S.candles.length>5){computeAll();requestAnimationFrame(drawChart);}
+      if(S.loaded&&S.candles.length>5){computeAll();if(!document.hidden){requestAnimationFrame(drawChart);}}
       else runAnalysis();
     })
     .catch(function(){
@@ -871,14 +876,14 @@ function fetchPrice(){
         .then(function(t){
           var p=parseFloat(t.price); if(!isFinite(p)||p<=0)throw new Error('bad');
           S.price=p; S.source='Coinbase';
-          document.getElementById('sCB').textContent='Live ✓'; document.getElementById('sCB').style.color='var(--green)';
-          document.getElementById('hSrc').textContent='Coinbase'; var _st2=document.getElementById('ctSrc');if(_st2)_st2.textContent='⬤ Coinbase ETH-USD';
-          return fetch('https://api.exchange.coinbase.com/products/ETH-USD/stats');
+          var _sCB=document.getElementById('sCB');if(_sCB){_sCB.textContent='Live ✓';_sCB.style.color='var(--green)';}
+          var _hSrc1=document.getElementById('hSrc');if(_hSrc1)_hSrc1.textContent='Coinbase'; var _st2=document.getElementById('ctSrc');if(_st2)_st2.textContent='⬤ Coinbase ETH-USD';
+          return fetch('https://api.exchange.coinbase.com/products/ETH-USD/stats').catch(function(){return null;});
         })
-        .then(function(r){return r.json()})
-        .then(function(s){
-          S.high24=parseFloat(s.high)||S.price; S.low24=parseFloat(s.low)||S.price;
-          S.open24=parseFloat(s.open)||S.price; S.vol24=parseFloat(s.volume)||0;
+        .then(function(r){if(!r)return null;return r.json().catch(function(){return null;});})
+        .then(function(s){if(!s)return;
+          S.high24=(s&&parseFloat(s.high))||S.price; S.low24=(s&&parseFloat(s.low))||S.price;
+          S.open24=(s&&parseFloat(s.open))||S.price; S.vol24=(s&&parseFloat(s.volume))||0;
           updateHeader(); runAnalysis();
         })
         .catch(function(){
@@ -889,7 +894,7 @@ function fetchPrice(){
               S.price=p; S.source='CoinGecko';
               S.open24=p/(1+(d.ethereum.usd_24h_change||0)/100);
               if(!S.high24)S.high24=p*1.02; if(!S.low24)S.low24=p*0.97;
-              document.getElementById('hSrc').textContent='CoinGecko';
+              var _hSrc2=document.getElementById('hSrc');if(_hSrc2)_hSrc2.textContent='CoinGecko';
               updateHeader(); runAnalysis();
             })
             .catch(function(){
@@ -925,6 +930,7 @@ function syncLivePriceToCandles(){
 }
 
 function fetchCandles(tf){
+  var _gen=(S._fetchGen||0); /* snapshot generation at fetch start */
   var bar=OKX_BAR[tf]||'1H';
   return fetch('https://www.okx.com/api/v5/market/candles?instId=ETH-USDT&bar='+bar+'&limit=300')
     .then(function(r){return r.json()})
@@ -936,11 +942,12 @@ function fetchCandles(tf){
         var c=raw[i];
         candles.push({t:+c[0],o:+c[1],h:+c[2],l:+c[3],c:+c[4],v:+c[5],confirm:+c[8]||0});
       }
+      if(_gen!==(S._fetchGen||0)){return;} /* stale fetch — TF changed, discard */
       S.candles=candles; S.loaded=true;
       /* FIX-1: Inject live price into the forming (unconfirmed) last candle.
          OKX confirm=0 means the bar is still open — its close is the live price. */
       syncLivePriceToCandles();
-      document.getElementById('chartLoad').style.display='none';
+      var _cL=document.getElementById('chartLoad');if(_cL)_cL.style.display='none';
       computeAll(); drawChart();
     })
     .catch(function(){
@@ -953,9 +960,10 @@ function fetchCandles(tf){
           if(!Array.isArray(data)||data.length<10)throw new Error('short');
           var candles=[];
           for(var i=data.length-1;i>=0;i--){var c=data[i];candles.push({t:c[0]*1000,o:c[3],h:c[2],l:c[1],c:c[4],v:c[5]});}
-          S.candles=candles; S.loaded=true;
+          if(_gen!==(S._fetchGen||0)){return;} /* stale fetch — TF changed, discard */
+      S.candles=candles; S.loaded=true;
           syncLivePriceToCandles(); /* FIX-7: sync in Coinbase fallback too */
-          document.getElementById('chartLoad').style.display='none';
+          var _cL=document.getElementById('chartLoad');if(_cL)_cL.style.display='none';
           computeAll(); drawChart();
         })
         .catch(function(){synthCandles(tf);});
@@ -968,7 +976,7 @@ function fetchUSDTDom(){
     .then(function(d){
       var dom=d.data&&d.data.market_cap_percentage&&d.data.market_cap_percentage.usdt;
       if(dom&&isFinite(dom)){S.prevUsdtDom=S.usdtDom;S.usdtDom=parseFloat(dom.toFixed(3));}
-      document.getElementById('hDom').textContent=S.usdtDom.toFixed(2)+'%';
+      var _hDom=document.getElementById('hDom');if(_hDom)_hDom.textContent=S.usdtDom.toFixed(2)+'%';
     })
     .catch(function(){
       if(S.price&&S.open24){
@@ -976,7 +984,7 @@ function fetchUSDTDom(){
         S.prevUsdtDom=S.usdtDom;
         /* FIX-3: Remove random noise from USDT dom approximation */
         S.usdtDom=Math.max(4,Math.min(12,S.usdtDom-chg*2));
-        document.getElementById('hDom').textContent=S.usdtDom.toFixed(2)+'%~';
+        var _hDom2=document.getElementById('hDom');if(_hDom2)_hDom2.textContent=S.usdtDom.toFixed(2)+'%~';
       }
     });
 }
@@ -984,18 +992,20 @@ function fetchUSDTDom(){
 function synthCandles(tf){
   var ms={'15m':900000,'1h':3600000,'4h':14400000,'1d':86400000,'1w':604800000}[tf]||3600000;
   var now=Date.now(),price=S.price||1634,candles=[];
+  /* LCG for reproducible synth candles */
+  var _ss=Math.floor(Date.now()/60000)^0x5f3759df; function _sr(){_ss=Math.imul(_ss,1664525)+1013904223|0;return(_ss>>>0)/4294967296;}
   var phases=[{d:.0008,v:.012,l:40},{d:-.0004,v:.015,l:20},{d:.0012,v:.018,l:35},{d:-.0006,v:.022,l:25},{d:.0005,v:.010,l:40},{d:-.0014,v:.025,l:20},{d:.0009,v:.013,l:20}];
   var pi=0,pc=0;
   for(var i=0;i<250;i++){
     var ph=phases[pi%phases.length];if(++pc>=ph.l){pc=0;pi++;}
-    var r=(Math.random()-.5)*2,o=price;
+    var r=(_sr()-.5)*2,o=price;
     price=price*(1+ph.d+r*ph.v);
-    var rng=price*ph.v*Math.random()*1.5;
-    candles.push({t:now-(250-i)*ms,o:o,h:Math.max(o,price)+rng*.6,l:Math.min(o,price)-rng*.4,c:price,v:800+Math.random()*6000});
+    var rng=price*ph.v*_sr()*1.5;
+    candles.push({t:now-(250-i)*ms,o:o,h:Math.max(o,price)+rng*.6,l:Math.min(o,price)-rng*.4,c:price,v:800+_sr()*6000});
   }
   S.candles=candles;S.loaded=true;
   syncLivePriceToCandles(); /* FIX-8: sync in synth fallback */
-  document.getElementById('chartLoad').style.display='none';
+  var _cL=document.getElementById('chartLoad');if(_cL)_cL.style.display='none';
   computeAll();drawChart();
 }
 
@@ -1009,7 +1019,7 @@ function computeAll(){
   computeZones(c);computeStructure(c);computePatterns(c);computeEW(c);
   gradeQuality();genSignal();renderRight();
   /* FIX-9: Update chart overlay (signal levels, zones) on each analysis */
-  if(S.loaded)requestAnimationFrame(drawChart);
+  if(S.loaded)if(!document.hidden){requestAnimationFrame(drawChart);}
 }
 
 function computeZones(c){
@@ -1038,9 +1048,10 @@ function computeZones(c){
 
 function computeStructure(c){
   var last=c.slice(-50);
+  if(last.length<12){S.ms={trend:'Ranging',bos:false,choch:false,htfTrend:'Ranging',rH:0,rL:0};return;}
   var hs=last.map(function(x){return x.h}),ls=last.map(function(x){return x.l});
-  var rH=aMax(hs.slice(-10)),rL=aMin(ls.slice(-10));
-  var pH=aMax(hs.slice(0,-10)),pL=aMin(ls.slice(0,-10));
+  var rH=aMax(hs.slice(-10)||[]),rL=aMin(ls.slice(-10)||[]);
+  var pH=aMax(hs.slice(0,-10)||[]),pL=aMin(ls.slice(0,-10)||[]);
   var choch=rH>pH&&last[last.length-1].c<pL;
   var bos=rH>pH&&!choch;
   var trend=rH>pH?'Bullish':rL<pL?'Bearish':'Ranging';
@@ -1181,14 +1192,26 @@ function genSignal(){
   if(total>=2){
     type='long';var nd=S.demandZ[0];
     entry=nd?nd.top*.9982:p*.9985;sl=nd?nd.bot*.9965:entry*.983;
-    tp1=entry*1.013;tp2=entry*1.030;tp3=entry*1.058;
+    /* Use calibrated TP/SL multipliers if available for this TF */
+    var _gc=getCalibForTF(S.tf);
+    var _t1m=_gc?_gc.tpM[0]:0.013, _t2m=_gc?_gc.tpM[1]:0.030, _t3m=_gc?_gc.tpM[2]:0.058;
+    var _slm=_gc?_gc.slMult:null;
+    if(_slm&&nd)sl=Math.min(nd.bot*.9965,entry*(1-_slm));
+    else if(_slm)sl=entry*(1-_slm);
+    tp1=entry*(1+_t1m);tp2=entry*(1+_t2m);tp3=entry*(1+_t3m);
     desc='BOS on '+S.tf.toUpperCase()+'. '+(nd?'Fresh demand zone':'Key support')+'. Wave '+ew.wave+'. USDT Dom '+(usdtDown?'↓':'neutral')+'.';
     cfs=['BOS confirmed','Demand '+(nd?fmt(nd.bot)+' – '+fmt(nd.top):'active'),'Wave '+ew.wave+' Impulse','USDT Dom '+(usdtDown?'↓ ETH Bullish':'Neutral')];
     S.patterns.filter(function(pt){return pt.bias==='bull';}).forEach(function(pt){cfs.push(pt.name+' ('+pt.tf+')');});
   }else if(total<=-2){
     type='short';var ns=S.supplyZ[0];
     entry=ns?ns.bot*1.0018:p*1.0015;sl=ns?ns.top*1.0035:entry*1.017;
-    tp1=entry*.987;tp2=entry*.970;tp3=entry*.942;
+    /* Use calibrated TP/SL multipliers if available */
+    var _gc2=getCalibForTF(S.tf);
+    var _t1m2=_gc2?_gc2.tpM[0]:0.013, _t2m2=_gc2?_gc2.tpM[1]:0.030, _t3m2=_gc2?_gc2.tpM[2]:0.058;
+    var _slm2=_gc2?_gc2.slMult:null;
+    if(_slm2&&ns)sl=Math.max(ns.top*1.0035,entry*(1+_slm2));
+    else if(_slm2)sl=entry*(1+_slm2);
+    tp1=entry*(1-_t1m2);tp2=entry*(1-_t2m2);tp3=entry*(1-_t3m2);
     desc='CHoCH. '+(ns?'Supply zone':'Resistance')+'. Wave '+ew.wave+' corrective. USDT Dom '+(usdtDown?'neutral':'↑')+'.';
     cfs=['CHoCH shift','Supply '+(ns?fmt(ns.bot)+' – '+fmt(ns.top):'active'),'Wave '+ew.wave+' Corrective','USDT Dom '+(usdtDown?'Neutral':'↑ ETH Bearish')];
     S.patterns.filter(function(pt){return pt.bias==='bear';}).forEach(function(pt){cfs.push(pt.name+' ('+pt.tf+')');});
@@ -1232,6 +1255,7 @@ function drawChart(){
   var vis=c.slice(-160);
   var allH=vis.map(function(x){return x.h});
   var allL=vis.map(function(x){return x.l});
+  if(!allH.length||!allL.length){setTimeout(drawChart,200);return;}
   var pMax=aMax(allH),pMin=aMin(allL);
   S.supplyZ.forEach(function(z){if(isFinite(z.top)&&z.top>pMax)pMax=z.top;});
   S.demandZ.forEach(function(z){if(isFinite(z.bot)&&z.bot<pMin)pMin=z.bot;});
@@ -1363,7 +1387,7 @@ function drawChart(){
      Volume histogram at bottom
      ══════════════════════════════════════════ */
   var volH=Math.min(35,cH*.12);
-  var maxVol=aMax(vis.map(function(x){return x.v}))||1;
+  var _visV=vis.map(function(x){return x.v}); var maxVol=_visV.length?aMax(_visV):1;
   var bW=Math.max(0.8,cW*.62);
 
   for(var ci=0;ci<vis.length;ci++){
@@ -1540,6 +1564,8 @@ function renderSig(){
     +'<span style="color:var(--text2)">·</span>'
     +'<span style="color:var(--text2)">'+new Date().toLocaleTimeString()+'</span>'
     +(_priceDrift>0.005?'<span style="margin-left:auto;color:var(--warn)">⚠ +'+(_priceDrift*100).toFixed(1)+'% drift</span>':'')
+    
+    +(getCalibForTF(S.tf)?'<span style="color:#64ffda;font-size:.60rem">🔧&nbsp;Calibrated</span>':'')
     +'</div>';
 
   /* Quality banner */
@@ -1608,7 +1634,7 @@ function renderSig(){
         +'<span style="color:var(--green)">✓</span>'+esc(cf)+'</div>';
     }).join('')+'</div>';
 
-  document.getElementById('sigPanel').innerHTML=h;
+  var _sigPanelEl=document.getElementById('sigPanel');if(_sigPanelEl)_sigPanelEl.innerHTML=h;
   /* Update header signal */
   var sigEl=document.getElementById('hSignal');
   if(sigEl)sigEl.textContent=sig.type==='long'?'▲ LONG':sig.type==='short'?'▼ SHORT':'● WAIT';
@@ -1660,7 +1686,7 @@ function renderRight(){
       +'</div>';
   }).join('')||'<div style="font-size:.68rem;color:var(--text2)">No patterns</div>';
 
-  document.getElementById('rPanel').innerHTML=
+  var _rPanelEl=document.getElementById('rPanel');if(_rPanelEl)_rPanelEl.innerHTML=
     '<div class="intel-block">'
     +'<div class="ib-title">📐 Market Structure</div>'
     +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:7px">'
@@ -1721,7 +1747,7 @@ function renderAnalysis(){
   ]:[];
   var sl={high:'HIGH',med:'MED',low:'LOW'};
 
-  document.getElementById('analysisView').innerHTML=
+  var _analysisViewEl=document.getElementById('analysisView');if(_analysisViewEl)_analysisViewEl.innerHTML=
     '<div class="grid2">'
     +'<div class="acard full"><div class="ach">🔭 Multi-Timeframe Confluence</div><div class="acb"><div class="mtfg">'
     +mtfd.map(function(m){return'<div class="mtfc"><div class="mtftf">'+m.tf+'</div><div class="mtfb '+m.bias+'">'+(bl[m.bias]||'—')+'</div><div class="mtfd">'+esc(m.d)+'</div></div>';}).join('')
@@ -1768,10 +1794,10 @@ var STYLE_P={
 function renderBT(){
   if(S._btRendered&&document.getElementById('btRes')){return;} /* BUG-13 FIX */
   S._btRendered=true;
-  document.getElementById('backtestingView').innerHTML=
+  var _backtestingViewEl=document.getElementById('backtestingView');if(_backtestingViewEl)_backtestingViewEl.innerHTML=
     '<div style="max-width:1300px">'
     +'<div class="bt-h"><div class="bt-title">⚡ SMC Backtesting — Delta Exchange ETHUSDT Perpetual</div>'
-    +'<div class="bt-sub">Live price action · Verified fees · Quality-filtered signals · Partial exits · Style calibration</div></div>'
+    +'<div class="bt-sub">Live price action · Verified fees · Quality-filtered signals · Partial exits · <strong style="color:#64ffda">Auto-calibrated TP/SL/Score</strong></div></div>'
 
     +'<div class="cfg-panel">'
     /* Capital & Risk */
@@ -1827,6 +1853,8 @@ function renderBT(){
     +'<div class="bt-actions">'
     +'<button class="btn primary" onclick="runBT()">▶ Run Backtest &amp; Calibrate</button>'
     +'<button class="btn secondary" onclick="resetBT()">↺ Reset</button>'
+    +'<button class="btn secondary" id="btnReCalib" onclick="reCalibUI()" style="display:none;background:rgba(100,255,218,.1);border-color:#64ffda;color:#64ffda">🔧 Re-Calibrate</button>'
+    +'<div id="calibStatus" style="font-size:.65rem;color:var(--text2);margin-top:6px;padding:6px 8px;background:rgba(0,0,0,.2);border-radius:5px;display:none">No calibration applied yet. Run a backtest to auto-calibrate TP/SL levels.</div>'
     +'<button class="btn export" id="btnExp" style="display:none" onclick="exportCSV()">⬇ CSV</button>'
     +'<span class="bt-stat" id="btStat"></span>'
     +'</div>'
@@ -1891,11 +1919,17 @@ function runBT(){
       var candles=genHist(yrs,cfg.tf);
       var results=runSim(candles,cfg);
       S.btResults=results;S.lastCfg=cfg;
+      /* ── AUTO-CALIBRATE: derive optimal params from results ── */
+      var calib=autoCalibrate(results,cfg);
+      S.btCalib=calib;
       bpWrap.style.display='none';
-      stat.textContent='✅ '+results.trades.length+' trades · Win rate: '+results.winRate+'%';
+      var wrNum=parseFloat(results.winRate);
+      var wrIcon=wrNum>=62?'✅':wrNum>=55?'⚠️':'❌';
+      stat.textContent=wrIcon+' '+results.trades.length+' trades · WR: '+results.winRate+'% · '+cfg.style.toUpperCase()+' recalibrated';
       res.style.display='block';
       document.getElementById('btnExp').style.display='inline-block';
-      renderBTRes(results,cfg);
+      renderBTRes(results,cfg,calib);
+      updateCalibStatus(calib,cfg.style);
     }
   }
   setTimeout(doStep,40);
@@ -1939,23 +1973,25 @@ function genHist(years,tf){
     {d:-.0022,v:.014,l:90},  /* bear phase */
   ];
   var price=1200,ph=0,phC=0,candles=[];
+  /* Deterministic LCG — eliminates _rnd() for reproducible backtests */
+  var _seed=Math.floor(years*1e6+count); function _rnd(){_seed=Math.imul(_seed,1664525)+1013904223|0;return (_seed>>>0)/4294967296;}
   for(var i=0;i<count;i++){
     var pct=i/count,base=getBase(pct);
     if(i%25===0)price=price*0.65+base*0.35;
     var p2=phases[ph%phases.length];
     if(++phC>=p2.l){phC=0;ph++;}
-    var noise=(Math.random()-.48)*p2.v; /* slight directional bias */
+    var noise=(_rnd()-.48)*p2.v; /* slight directional bias */
     price=Math.max(600,Math.min(6000,price*(1+p2.d+noise)));
-    var rng=price*p2.v*Math.random()*1.4;
-    var o=price*(1+(Math.random()-.5)*.002);
-    candles.push({t:start+i*ms,o:o,h:Math.max(o,price)+rng*.5,l:Math.min(o,price)-rng*.4,c:price,v:400+Math.random()*8000});
+    var rng=price*p2.v*_rnd()*1.4;
+    var o=price*(1+(_rnd()-.5)*.002);
+    candles.push({t:start+i*ms,o:o,h:Math.max(o,price)+rng*.5,l:Math.min(o,price)-rng*.4,c:price,v:400+_rnd()*8000});
   }
   return candles;
 }
 
 /* Quality score for BT candles */
 function btQuality(slice,bosBull,bosBear,bullSD,bearSD,sp){
-  /* BUG-07 FIX: fully deterministic — no Math.random() */
+  /* BUG-07 FIX: fully deterministic — no _sr() */
   var n=slice.length;
   var prices=slice.slice(-20).map(function(x){return x.c});
   var prMin=aMin(prices),prMax=aMax(prices),prRange=prMax-prMin||1;
@@ -2147,19 +2183,18 @@ function runSim(candles,cfg){
       score2=Math.max(0,Math.min(100,score2));
       tQuality=score2>=65?'high':score2>=45?'medium':'low';
 
-      /* Minimum score gate — calibrated for >65% WR */
-      /* v5.1: Raised thresholds for >60% WR */
-      /* v5.2: Final calibrated thresholds */
-      /* v5.1 calibrated */ var minScore2=50;
-      if(cfg.strat==='bos')minScore2=42;
-      else if(cfg.strat==='sdz')minScore2=sdSc2>=12?35:50;
-      else if(cfg.strat==='elliott')minScore2=40;
+      /* ── ADAPTIVE score gate from S.scoreThresh (updated by autoCalibrate) ── */
+      var _baseThresh=S.scoreThresh[cfg.style]||50;
+      var minScore2=_baseThresh;
+      if(cfg.strat==='bos')minScore2=Math.max(38,_baseThresh-8);
+      else if(cfg.strat==='sdz')minScore2=sdSc2>=12?Math.max(32,_baseThresh-15):_baseThresh;
+      else if(cfg.strat==='elliott')minScore2=Math.max(38,_baseThresh-10);
       if(score2<minScore2){skippedLowQ++;continue;}
 
-      /* Quality filter (UI setting) */
+      /* Quality filter (UI setting) — high threshold also adaptive */
       var minQ=cfg.minQuality;
-      /* v5.3: 'high' filter requires score2>=65 for reliable >60% WR */
-      var passQ=(minQ==='any')||(minQ==='medium'&&score2>=45)||(minQ==='high'&&score2>=65);
+      var highGate=Math.max(60,_baseThresh+Math.round((_baseThresh-50)*0.3));
+      var passQ=(minQ==='any')||(minQ==='medium'&&score2>=_baseThresh-5)||(minQ==='high'&&score2>=highGate);
       if(!passQ){skippedLowQ++;continue;}
 
       /* ATR-based SL/TP placement */
@@ -2205,7 +2240,7 @@ function runSim(candles,cfg){
   return analyze(trades,equity,cfg,totalFees,totalFunding,skippedLowQ);
 }
 
-function btReason(s){var m={smc:['BOS+S/D','CHoCH+OB','FVG+BOS','Demand+EW'],sdz:['Demand Zone','Supply Zone'],bos:['BOS','CHoCH Break'],elliott:['Wave 3','EW+Fib']};var o=m[s]||m.smc;return o[Math.floor(Math.random()*o.length)];}
+function btReason(s){var m={smc:['BOS+S/D','CHoCH+OB','FVG+BOS','Demand+EW'],sdz:['Demand Zone','Supply Zone'],bos:['BOS','CHoCH Break'],elliott:['Wave 3','EW+Fib']};var o=m[s]||m.smc;return o[Math.floor(_sr()*o.length)];}
 
 function analyze(trades,equity,cfg,fees,funding,skipped){
   if(!trades||trades.length===0){return{trades:[],equity:equity,winRate:'0.0',totPnl:'0',avgWin:'0',avgLoss:'0',avgRR:'0',maxDD:'0',pf:'0',final:cfg.cap,initCap:cfg.cap,netR:'0',grossR:'0',fees:'0',funding:'0',tp1h:0,tp2h:0,tp3h:0,slh:0,skipped:skipped,qHigh:0,qMed:0,qLow:0};} /* FIX-12 */
@@ -2232,8 +2267,169 @@ function analyze(trades,equity,cfg,fees,funding,skipped){
   return{trades:trades,equity:equity,winRate:wr,totPnl:totPnl.toFixed(1),avgWin:aw,avgLoss:al,avgRR:avgRR,maxDD:maxDD.toFixed(1),pf:pf,final:final2,initCap:cfg.cap,netR:netR,grossR:grossR,fees:fees.toFixed(2),funding:funding.toFixed(2),tp1h:tp1h,tp2h:tp2h,tp3h:tp3h,slh:slh,skipped:skipped,qHigh:qHigh,qMed:qMed,qLow:qLow};
 }
 
-function renderBTRes(r,cfg){
-  var sp=STYLE_P[cfg.style];
+/* ═══════════════════════════════════════════════════════════════════
+   AUTO-CALIBRATION ENGINE v1.0
+   Analyses backtest results → derives optimal TP/SL multipliers →
+   updates STYLE_P + S.scoreThresh → propagates to live signal engine
+   ═══════════════════════════════════════════════════════════════════ */
+function autoCalibrate(r,cfg){
+  'use strict';
+  if(!r||!r.trades||r.trades.length<10)return null;
+  var style=cfg.style;
+  var sp0=STYLE_P[style]; /* baseline before calibration */
+  var prevTpM=sp0.tpM.slice();
+  var prevSl=sp0.slMult;
+  var prevScore=S.scoreThresh[style]||50;
+
+  var wins=r.trades.filter(function(t){return t.result==='win';});
+  var losses=r.trades.filter(function(t){return t.result==='loss';});
+  var wr=parseFloat(r.winRate);
+  var pf=parseFloat(r.pf)||1;
+  var tot=r.trades.length;
+
+  /* ── 1. Derive TP multiples from actual trade move sizes ── */
+  /* Compute avg absolute P&L% for TP1/TP2/TP3 winners */
+  var tp1Wins=wins.filter(function(t){return t.tp1Hit&&!t.tp2Hit;});
+  var tp2Wins=wins.filter(function(t){return t.tp2Hit&&t.tpTag!=='TP3';});
+  var tp3Wins=wins.filter(function(t){return t.tpTag==='TP3'||t.tpTag==='MAX';});
+
+  function avgPnl(arr){
+    if(!arr||!arr.length)return 0;
+    return arr.reduce(function(s,t){return s+Math.abs(parseFloat(t.pnlPct));},0)/arr.length;
+  }
+
+  var avgTP1Pnl=avgPnl(tp1Wins)||sp0.tpM[0]*100;
+  var avgTP2Pnl=avgPnl(tp2Wins)||sp0.tpM[1]*100;
+  var avgTP3Pnl=avgPnl(tp3Wins)||sp0.tpM[2]*100;
+  var avgSlPnl =avgPnl(losses)||sp0.slMult*100;
+
+  /* Convert % to multipliers */
+  var rawTP1=avgTP1Pnl/100;
+  var rawTP2=avgTP2Pnl/100;
+  var rawTP3=avgTP3Pnl/100;
+  var rawSL =avgSlPnl/100;
+
+  /* Style-specific clamp ranges */
+  var ranges={
+    scalp:   {tp1:[.004,.018],tp2:[.008,.032],tp3:[.014,.060],sl:[.002,.012]},
+    intraday:{tp1:[.008,.035],tp2:[.018,.065],tp3:[.030,.120],sl:[.005,.025]},
+    swing:   {tp1:[.015,.060],tp2:[.030,.110],tp3:[.055,.200],sl:[.012,.045]}
+  };
+  var rng=ranges[style]||ranges.intraday;
+
+  function clamp(v,lo,hi){return Math.max(lo,Math.min(hi,v));}
+
+  /* If we have enough samples, use actual; else blend 60/40 with baseline */
+  if(tot<10)return null; /* not enough data to calibrate */
+  var blendW=(tot>=50)?1.0:(tot>=25)?0.7:0.4;
+
+  var newTP1=clamp(rawTP1*blendW+sp0.tpM[0]*(1-blendW),rng.tp1[0],rng.tp1[1]);
+  var newTP2=clamp(rawTP2*blendW+sp0.tpM[1]*(1-blendW),rng.tp2[0],rng.tp2[1]);
+  var newTP3=clamp(rawTP3*blendW+sp0.tpM[2]*(1-blendW),rng.tp3[0],rng.tp3[1]);
+  var newSL =clamp(rawSL *blendW+sp0.slMult*(1-blendW),rng.sl[0], rng.sl[1]);
+
+  /* Enforce TP ordering: TP1 < TP2 < TP3, each at least 20% larger */
+  if(newTP2<newTP1*1.2)newTP2=newTP1*1.3;
+  if(newTP3<newTP2*1.25)newTP3=newTP2*1.4;
+  newTP1=clamp(newTP1,rng.tp1[0],rng.tp1[1]);
+  newTP2=clamp(newTP2,rng.tp2[0],rng.tp2[1]);
+  newTP3=clamp(newTP3,rng.tp3[0],rng.tp3[1]);
+
+  /* ── 2. Score threshold adaptation ── */
+  /* Target: WR >= 62%. If below, raise threshold. If well above, lower slightly. */
+  var curThresh=S.scoreThresh[style]||50;
+  var newThresh=curThresh;
+  if(wr<55){newThresh=Math.min(curThresh+5,72);}       /* too many losers → tighten */
+  else if(wr<60){newThresh=Math.min(curThresh+3,70);}  /* below target → tighten */
+  else if(wr>=70&&pf>=2.0){newThresh=Math.max(curThresh-3,40);} /* outperforming → relax for more trades */
+  else if(wr>=65&&pf>=1.6){newThresh=Math.max(curThresh-1,42);} /* slightly relax */
+
+  /* ── 3. SL adjustment based on PF ── */
+  /* If PF<1.2 despite decent WR, SL too wide → tighten; if WR<50 → widen to allow stops */
+  if(pf<1.2&&wr>50)newSL=clamp(newSL*0.88,rng.sl[0],rng.sl[1]);
+  if(wr<50&&pf<1.0)newSL=clamp(newSL*1.10,rng.sl[0],rng.sl[1]);
+
+  /* ── 4. Apply to STYLE_P ── */
+  STYLE_P[style].tpM=[
+    Math.round(newTP1*10000)/10000,
+    Math.round(newTP2*10000)/10000,
+    Math.round(newTP3*10000)/10000
+  ];
+  STYLE_P[style].slMult=Math.round(newSL*10000)/10000;
+  S.scoreThresh[style]=Math.round(newThresh);
+
+  /* ── 5. Store calibration record ── */
+  var calib={
+    style:style,
+    tpM:STYLE_P[style].tpM.slice(),
+    slMult:STYLE_P[style].slMult,
+    minScore:newThresh,
+    wr:wr, pf:pf, trades:tot,
+    prevTpM:prevTpM, prevSl:prevSl, prevScore:prevScore,
+    blendWeight:blendW,
+    calibAt:new Date().toISOString(),
+    period:cfg.period, tf:cfg.tf
+  };
+  S.calibrated[style]=calib;
+
+  /* ── 6. Propagate to live genSignal() if active TF matches ── */
+  propagateCalibToSignal(style,calib);
+
+  return calib;
+}
+
+function propagateCalibToSignal(style,calib){
+  /* Map style → TF equivalents for signal propagation */
+  var tfMap={scalp:['1m','5m','15m'],intraday:['1h','4h'],swing:['1d']};
+  var matchTFs=tfMap[style]||[];
+  var tfMatches=matchTFs.indexOf(S.tf)>=0;
+  /* Store calibrated signal params accessible by genSignal */
+  if(!S._calibSig)S._calibSig={};
+  S._calibSig[style]={
+    tp1Mult:calib.tpM[0], tp2Mult:calib.tpM[1], tp3Mult:calib.tpM[2],
+    slMult:calib.slMult, active:true, tfMatches:tfMatches
+  };
+  /* Trigger signal recompute if we have live candles */
+  if(S.candles&&S.candles.length>5&&S.price>0){
+    setTimeout(function(){computeAll();},200);
+  }
+}
+
+function calibrationBadge(calib,r){
+  if(!calib)return'';
+  var style=calib.style;
+  var wr=calib.wr, pf=calib.pf;
+  var wrOk=wr>=62,pfOk=pf>=1.4;
+  var statusCol=wrOk&&pfOk?'var(--green)':wr>=55?'var(--warn)':'var(--red)';
+  var statusTxt=wrOk&&pfOk?'✅ Well Calibrated':wr>=55?'⚠️ Marginal — re-run advised':'❌ Below target — tighten filters';
+  var blendPct=Math.round(calib.blendWeight*100);
+
+  function fmtPct(v){return (v*100).toFixed(2)+'%';}
+  function diff(a,b){var d=(b-a)*100;var s=d>=0?'+':'';return'<span style="color:'+(d>=0?'#64ffda':'var(--red)')+'">'+s+d.toFixed(2)+'%</span>';}
+  function diffScore(a,b){var d=b-a;var s=d>=0?'+':'';return'<span style="color:'+(d>=0?'var(--red)':'#64ffda')+'">'+s+d+'</span>';}/* higher score = stricter = might reduce trades */
+
+  return '<div id="calibBadge" style="background:rgba(0,198,255,.06);border:1px solid rgba(0,198,255,.25);border-radius:10px;padding:14px 16px;margin-bottom:14px">'    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'    +'<div style="font-size:.82rem;font-weight:700;color:var(--accent)">🔧 Auto-Calibration Complete — <span style="text-transform:uppercase">'+style+'</span></div>'    +'<div style="font-size:.72rem;color:'+statusCol+'">'+statusTxt+'</div>'    +'</div>'    +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px">'    +'<div style="background:rgba(0,0,0,.3);border-radius:6px;padding:8px;font-size:.68rem">'    +'<div style="color:var(--text2);margin-bottom:4px">TP1 Mult</div>'    +'<div style="color:var(--text)">'+fmtPct(calib.prevTpM[0])+' → <strong style="color:#64ffda">'+fmtPct(calib.tpM[0])+'</strong></div>'    +'<div style="margin-top:2px">'+diff(calib.prevTpM[0],calib.tpM[0])+'</div>'    +'</div>'    +'<div style="background:rgba(0,0,0,.3);border-radius:6px;padding:8px;font-size:.68rem">'    +'<div style="color:var(--text2);margin-bottom:4px">TP2 Mult</div>'    +'<div style="color:var(--text)">'+fmtPct(calib.prevTpM[1])+' → <strong style="color:var(--green)">'+fmtPct(calib.tpM[1])+'</strong></div>'    +'<div style="margin-top:2px">'+diff(calib.prevTpM[1],calib.tpM[1])+'</div>'    +'</div>'    +'<div style="background:rgba(0,0,0,.3);border-radius:6px;padding:8px;font-size:.68rem">'    +'<div style="color:var(--text2);margin-bottom:4px">TP3 Mult</div>'    +'<div style="color:var(--text)">'+fmtPct(calib.prevTpM[2])+' → <strong style="color:var(--gold)">'+fmtPct(calib.tpM[2])+'</strong></div>'    +'<div style="margin-top:2px">'+diff(calib.prevTpM[2],calib.tpM[2])+'</div>'    +'</div>'    +'</div>'    +'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;font-size:.68rem">'    +'<div style="background:rgba(0,0,0,.3);border-radius:6px;padding:8px">'    +'<div style="color:var(--text2);margin-bottom:4px">SL Mult</div>'    +'<div style="color:var(--text)">'+fmtPct(calib.prevSl)+' → <strong style="color:var(--warn)">'+fmtPct(calib.slMult)+'</strong></div>'    +'<div style="margin-top:2px">'+diff(calib.prevSl,calib.slMult)+'</div>'    +'</div>'    +'<div style="background:rgba(0,0,0,.3);border-radius:6px;padding:8px">'    +'<div style="color:var(--text2);margin-bottom:4px">Score Gate</div>'    +'<div style="color:var(--text)">'+calib.prevScore+' → <strong style="color:var(--accent)">'+calib.minScore+'</strong></div>'    +'<div style="margin-top:2px">'+diffScore(calib.prevScore,calib.minScore)+'</div>'    +'</div>'    +'<div style="background:rgba(0,0,0,.3);border-radius:6px;padding:8px">'    +'<div style="color:var(--text2);margin-bottom:4px">Win Rate</div>'    +'<div style="color:'+statusCol+'"><strong>'+wr.toFixed(1)+'%</strong> (target ≥62%)</div>'    +'<div style="margin-top:2px;color:var(--text2)">'+r.trades.length+' trades · PF '+pf+'</div>'    +'</div>'    +'<div style="background:rgba(0,0,0,.3);border-radius:6px;padding:8px">'    +'<div style="color:var(--text2);margin-bottom:4px">Blend Weight</div>'    +'<div style="color:var(--accent)"><strong>'+blendPct+'%</strong> actual</div>'    +'<div style="margin-top:2px;color:var(--text2)">'+calib.trades+'+ trades → accurate</div>'    +'</div>'    +'</div>'    +'<div style="margin-top:10px;font-size:.66rem;color:var(--text2);border-top:1px solid rgba(255,255,255,.06);padding-top:8px">'    +'⚡ Calibrated params applied to STYLE_P['+style+'] · Next backtest run uses updated values · Live signal TP/SL levels updated'    +((calib.tfMatches||false)?' · <span style="color:var(--green)">✓ Live chart TF matches — signal immediately updated</span>':' · Re-select this style on chart to apply to signal')
+    +'<br>Calibrated: '+calib.calibAt.replace('T',' ').slice(0,19)+' UTC · Period: '+calib.period+' · TF: '+calib.tf
+    +'</div>'
+    +'</div>';
+}
+
+/* ── Helper: return calibrated TP/SL for genSignal() if available ── */
+function getCalibForTF(tf){
+  var tfMap={
+    '1m':'scalp','5m':'scalp','15m':'scalp',
+    '1h':'intraday','4h':'intraday',
+    '1d':'swing','3d':'swing','1w':'swing'
+  };
+  var style=tfMap[tf]||'intraday';
+  if(S.calibrated&&S.calibrated[style]){
+    return S.calibrated[style];
+  }
+  return null;
+}
+
+function renderBTRes(r,cfg,calib){
+  var sp=STYLE_P[cfg.style]; /* STYLE_P already updated by autoCalibrate() if calib truthy */
   var tot=r.trades.length||1;
   var t1p=(r.tp1h/tot*100).toFixed(0),t2p=(r.tp2h/tot*100).toFixed(0),t3p=(r.tp3h/tot*100).toFixed(0),slp=(r.slh/tot*100).toFixed(0);
 
@@ -2281,14 +2477,12 @@ function renderBTRes(r,cfg){
     +'<div class="fee-bd-row"><span>Net vs Gross return</span><span style="color:var(--gold)">'+r.netR+'% vs '+r.grossR+'%</span></div>'
     +'</div>';
 
-  var styleNote='<div style="background:rgba(0,212,255,.05);border:1px solid rgba(0,212,255,.15);border-radius:7px;padding:9px;margin-bottom:12px;font-size:.72rem;color:var(--text2);line-height:1.5">'
-    +'<strong style="color:var(--accent)">'+cfg.style.toUpperCase()+' Style:</strong> '+sp.desc
-    +' · TP range: '+Math.round(sp.tpM[0]*100)+'%–'+Math.round(sp.tpM[2]*100)+'%'
-    +' · SL: '+Math.round(sp.slMult*100)+'%'
-    +'</div>';
+  var spNow=STYLE_P[cfg.style];
+  var calibSuffix=calib?' · <span style="color:#64ffda">🔧 CALIBRATED</span> · Score gate: '+S.scoreThresh[cfg.style]:'';
+  var styleNote='<div style="background:rgba(0,212,255,.05);border:1px solid rgba(0,212,255,.15);border-radius:7px;padding:9px;margin-bottom:12px;font-size:.72rem;color:var(--text2);line-height:1.5">'    +'<strong style="color:var(--accent)">'+cfg.style.toUpperCase()+' Style:</strong> '+sp.desc    +' · TP: '+(spNow.tpM[0]*100).toFixed(2)+'% / '+(spNow.tpM[1]*100).toFixed(2)+'% / '+(spNow.tpM[2]*100).toFixed(2)+'%'    +' · SL: '+(spNow.slMult*100).toFixed(2)+'%'    +calibSuffix    +'</div>';
 
   var logRows=r.trades.slice(-60).slice().reverse().map(function(t){
-    var pnl=parseFloat(t.pnlPct);
+    var pnl=parseFloat(t.pnlPct||'0');
     return'<tr><td>'+t.date+'</td><td class="td-'+t.type+'">'+t.type.toUpperCase()+'</td><td class="qtag '+t.quality+'" style="background:none;padding:3px 5px">'+t.quality.toUpperCase()+'</td><td>$'+t.entry+'</td><td>$'+t.exit+'</td><td class="td-l">$'+t.sl+'</td>'
     +'<td><span style="color:'+(t.tp1Hit?'#64ffda':'var(--text2)')+'">T1</span> <span style="color:'+(t.tp2Hit?'var(--green)':'var(--text2)')+'">T2</span></td>'
     +'<td>'+t.tpTag+'</td><td class="'+(pnl>=0?'td-pos':'td-neg')+'">'+(pnl>=0?'+':'')+t.pnlPct+'%</td><td>'+t.rr+'</td>'
@@ -2296,8 +2490,9 @@ function renderBTRes(r,cfg){
     +'<td class="'+(t.result==='win'?'td-w':'td-l')+'">'+(t.result==='win'?'✅':'❌')+'</td></tr>';
   }).join('');
 
-  document.getElementById('btRes').innerHTML=
-    styleNote+statsHtml+eqHtml+tpHtml+qHtml+feeHtml
+  var calibHtml=calibrationBadge(calib,r);
+  var _btResEl=document.getElementById('btRes');if(_btResEl)_btResEl.innerHTML=
+    calibHtml+styleNote+statsHtml+eqHtml+tpHtml+qHtml+feeHtml
     +'<div class="tlog"><div class="tlog-hdr"><span>📋 Trade Log (last 60)</span><span style="color:var(--text2)">'+r.trades.length+' total</span></div>'
     +'<div style="overflow-x:auto"><table class="tt"><thead><tr>'
     +'<th>Date</th><th>Type</th><th>Quality</th><th>Entry</th><th>Exit</th><th>SL</th><th>Partials</th><th>TP</th><th>P&amp;L%</th><th>RR</th><th>Fees</th><th>Reason</th><th>Result</th>'
@@ -2359,6 +2554,34 @@ function resetBT(){
   var pw=document.getElementById('bpWrap');if(pw)pw.style.display='none';
 }
 
+function reCalibUI(){
+  /* Quick re-run with current cfg but apply stored calibration first */
+  if(!S.lastCfg||!S.btResults){alert('Run a backtest first.');return;}
+  /* Already calibrated — run another pass with updated STYLE_P */
+  runBT();
+}
+
+function updateCalibStatus(calib,style){
+  var el=document.getElementById('calibStatus');
+  var btn=document.getElementById('btnReCalib');
+  if(!el)return;
+  if(!calib){
+    el.style.display='none';
+    if(btn)btn.style.display='none';
+    return;
+  }
+  el.style.display='block';
+  if(btn)btn.style.display='inline-block';
+  var wr=calib.wr, pf=calib.pf;
+  var col=wr>=62?'#64ffda':wr>=55?'var(--warn)':'var(--red)';
+  el.innerHTML='<span style="color:'+col+'">🔧 '+style.toUpperCase()+' calibrated</span>'
+    +' · WR: <strong style="color:'+col+'">'+wr.toFixed(1)+'%</strong>'
+    +' · TP: '+(calib.tpM[0]*100).toFixed(2)+'% / '+(calib.tpM[1]*100).toFixed(2)+'% / '+(calib.tpM[2]*100).toFixed(2)+'%'
+    +' · SL: '+(calib.slMult*100).toFixed(2)+'%'
+    +' · Score gate: '+calib.minScore
+    +' · <span style="color:var(--text2)">Applied to live signals ✓</span>';
+}
+
 /* ═══════════════════════════════════════════════════════════════════
    9. VIEW SWITCHING & CONTROLS
    ═══════════════════════════════════════════════════════════════════ */
@@ -2380,6 +2603,7 @@ function switchView(v){
 
 function setTF(tf,btnId){
   S.tf=tf;
+  S._fetchGen=(S._fetchGen||0)+1; /* invalidate in-flight fetches */
   /* FIX-4: Clear candle cache on TF switch — forces fresh API data
      Prevents stale signals from previous timeframe candles */
   S.candles=[];
@@ -2413,22 +2637,35 @@ function init(){
 
   document.getElementById('analysisView').style.display='none';
   document.getElementById('backtestingView').style.display='none';
-  document.getElementById('tradingView').style.display='grid';
+  var _tvSV=document.getElementById('tradingView');if(_tvSV)_tvSV.style.display='grid';
 
   fetchPrice().then(function(){return fetchCandles(S.tf);}).then(function(){fetchUSDTDom();renderRight();});
   /* FIX-11: ResizeObserver for canvas-wrap — handles flex resize properly */
   if(typeof ResizeObserver !== 'undefined'){
-    var _ro=new ResizeObserver(function(){if(S.loaded)requestAnimationFrame(drawChart);});
+    S._resizeObs=new ResizeObserver(function(){if(S.loaded&&!document.hidden){requestAnimationFrame(drawChart);}});
     var cw=document.getElementById('chartWrap');
-    if(cw)_ro.observe(cw);
+    if(cw)S._resizeObs.observe(cw);
   }
-  window.addEventListener('resize',dbc(function(){if(S.loaded)requestAnimationFrame(drawChart);},150));
+  window.addEventListener('resize',dbc(function(){if(S.loaded)if(!document.hidden){requestAnimationFrame(drawChart);}},150));
   /* FIX-10: 3s price refresh for fresher signals (was 5s) */
   /* FIX-4: Price refresh — fetchPrice internally calls computeAll+drawChart via sync chain */
   S._priceInterval=setInterval(function(){fetchPrice();},3000);
   /* USDT dom updates less frequently (every 30s) */
   S._domInterval=setInterval(fetchUSDTDom,30000);
-  S._candleInterval=setInterval(function(){if(document.getElementById('tradingView').style.display!=='none')fetchCandles(S.tf);},60000);
+  /* Pause intervals when tab is hidden, resume on return */
+  document.addEventListener('visibilitychange',function(){
+    if(document.hidden){
+      clearInterval(S._priceInterval);S._priceInterval=null;
+      clearInterval(S._candleInterval);S._candleInterval=null;
+    }else{
+      if(!S._priceInterval)S._priceInterval=setInterval(function(){fetchPrice();},3000);
+      if(!S._candleInterval)S._candleInterval=setInterval(function(){
+        var _tv2=document.getElementById('tradingView');
+        if(_tv2&&_tv2.style.display!=='none'&&!document.hidden)fetchCandles(S.tf);
+      },60000);
+    }
+  });
+  S._candleInterval=setInterval(function(){var _tv=document.getElementById('tradingView');if(_tv&&_tv.style.display!=='none'&&!document.hidden)fetchCandles(S.tf);},60000);;
 }
 /* ═══════════════════════════════════════════════════════════════════
    TRADINGVIEW LIVE CHART — BINANCE:ETHUSDT
@@ -2536,7 +2773,7 @@ function setTVTF(interval,btn){
     var sum=smc+6+tv;
     if(sum>totalH){var ratio=totalH/sum;smc=Math.floor(smc*ratio);tv=Math.floor(tv*ratio);}
     stack.style.gridTemplateRows=smc+'px 6px '+tv+'px';
-    if(S.loaded)requestAnimationFrame(drawChart);
+    if(S.loaded)if(!document.hidden){requestAnimationFrame(drawChart);}
   }
   function onUp(){
     _drag=false;

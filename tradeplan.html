@@ -80,17 +80,26 @@ body{
   scrollbar-width:thin;scrollbar-color:var(--border) transparent;
 }
 .plan-panel.active{display:block}
+.plan-panel.loading .setup,.plan-panel.loading .rcard-body:not(#intra-cf){opacity:.5;pointer-events:none}
+#load-overlay{display:none;position:fixed;inset:0;background:rgba(2,6,8,.85);z-index:200;flex-direction:column;align-items:center;justify-content:center;gap:14px}
+#load-overlay.show{display:flex}
+.load-spin{width:44px;height:44px;border:3px solid rgba(0,198,255,.2);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.load-text{font-size:.82rem;color:var(--accent);font-weight:700}
+.load-sub{font-size:.65rem;color:var(--text2)}
 ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
 
 /* ── PANEL LAYOUT: left=setups, right=tools ── */
 .panel-inner{
   display:grid;
   grid-template-columns:1fr 340px;
+  grid-template-rows:1fr;
   gap:0;
   min-height:100%;
+  align-items:start;
 }
 .panel-left{padding:16px;border-right:1px solid var(--border);display:flex;flex-direction:column;gap:14px}
-.panel-right{padding:16px;background:var(--bg1);display:flex;flex-direction:column;gap:14px;position:sticky;top:0;height:100vh;overflow-y:auto;flex-shrink:0}
+.panel-right{padding:16px;background:var(--bg1);display:flex;flex-direction:column;gap:14px;position:sticky;top:0;height:fit-content;max-height:100vh;overflow-y:auto;overflow-x:hidden;flex-shrink:0;align-self:flex-start}
 
 /* ── SECTION HEADER ── */
 .sec-hdr{display:flex;align-items:center;gap:12px;margin-bottom:4px}
@@ -260,7 +269,7 @@ body{
     <div class="ms-item"><div class="ms-l">Elliott</div><div class="ms-v neut">Wave B</div></div>
     <div class="ms-item"><div class="ms-l">Generated</div><div class="ms-v gold" id="genTime" style="font-size:.68rem">—</div></div>
   </div>
-  <div style="font-size:.58rem;color:var(--text2);padding:0 10px;max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" id="analysis-status">Initialising…</div>
+  <div style="font-size:.60rem;color:var(--warn);padding:0 12px;max-width:320px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .3s" id="analysis-status">⏳ Initialising live data…</div>
   <div class="live-pill"><div class="ldot"></div><span class="lpt">LIVE</span></div>
 </div>
 
@@ -366,8 +375,9 @@ body{
         <div>Supply: <strong style="color:var(--red)">$1,628–$1,633</strong></div>
         <div>Demand: <strong style="color:var(--green)">$1,617–$1,621</strong></div>
       </div>
-    </div>
-  </div>
+    </div><!-- /scalp-struct -->
+    </div><!-- /rcard-body -->
+  </div><!-- /rcard -->
 
   <div class="rcard">
     <div class="rcard-hdr" style="color:var(--scalp)">💸 Scalp Risk Calc</div>
@@ -452,11 +462,11 @@ body{
     <div class="setup-title">4H Supply Short — Wave B Exhaustion</div>
     <div class="setup-desc">The $1,640–$1,663 zone is the 4H bearish OB (origin of the drop). Short from this supply for continuation of the macro bearish trend. Full size — HTF aligned.</div>
     <table class="ltable">
-      <tr><td class="lt-l">⦿ Entry</td><td><span class="lt-v e"><span id="intra-entry">$1,645 – $1,658</span></td><td class="lt-note">ATR-based, 4H supply</td></tr>
-      <tr><td class="lt-l">🛑 Stop Loss</td><td><span class="lt-v s"><span id="intra-sl">$1,667</span></td><td class="lt-note">1.3×ATR4H above entry</td></tr>
-      <tr><td class="lt-l">🎯 TP1 40%</td><td><span class="lt-v t1"><span id="intra-tp1">$1,625</span></td><td class="lt-note">1.5×ATR4H (live)</td></tr>
-      <tr><td class="lt-l">🎯 TP2 35%</td><td><span class="lt-v t2"><span id="intra-tp2">$1,600</span></td><td class="lt-note">2.8×ATR4H (live)</td></tr>
-      <tr><td class="lt-l">🎯 TP3 25%</td><td><span class="lt-v t3"><span id="intra-tp3">$1,571</span></td><td class="lt-note">4.5×ATR4H (live)</td></tr>
+      <tr><td class="lt-l">⦿ Entry</td><td><span class="lt-v e" id="intra-entry">$1,645 – $1,658</span></td><td class="lt-note">ATR-based, 4H supply</td></tr>
+      <tr><td class="lt-l">🛑 Stop Loss</td><td><span class="lt-v s" id="intra-sl">$1,667</span></td><td class="lt-note">1.3×ATR4H above entry</td></tr>
+      <tr><td class="lt-l">🎯 TP1 40%</td><td><span class="lt-v t1" id="intra-tp1">$1,625</span></td><td class="lt-note">1.5×ATR4H (live)</td></tr>
+      <tr><td class="lt-l">🎯 TP2 35%</td><td><span class="lt-v t2" id="intra-tp2">$1,600</span></td><td class="lt-note">2.8×ATR4H (live)</td></tr>
+      <tr><td class="lt-l">🎯 TP3 25%</td><td><span class="lt-v t3" id="intra-tp3">$1,571</span></td><td class="lt-note">4.5×ATR4H (live)</td></tr>
     </table>
     <div class="tags">
       <span class="tag gold">RR <span id="intra-rr">2.15:1</span></span>
@@ -667,6 +677,13 @@ body{
   <div style="margin-left:auto;font-size:.57rem">Educational only · Not financial advice</div>
 </div>
 
+<!-- Loading overlay -->
+<div id="load-overlay">
+  <div class="load-spin"></div>
+  <div class="load-text">Fetching live ETH/USDT data…</div>
+  <div class="load-sub">OKX API · 4H + 1H + 15m candles</div>
+</div>
+
 <script>
 'use strict';
 
@@ -738,8 +755,8 @@ function fetchUSDTDom() {
 }
 
 // ── Helper functions ──
-function amax(arr) { return arr.length ? Math.max.apply(null, arr) : 0; }
-function amin(arr) { return arr.length ? Math.min.apply(null, arr) : 0; }
+function amax(arr) { if(!arr||!arr.length)return 0; var m=arr[0]; for(var _i=1;_i<arr.length;_i++)if(isFinite(arr[_i])&&arr[_i]>m)m=arr[_i]; return isFinite(m)?m:0; }
+function amin(arr) { if(!arr||!arr.length)return 0; var m=arr[0]; for(var _j=1;_j<arr.length;_j++)if(isFinite(arr[_j])&&arr[_j]<m)m=arr[_j]; return isFinite(m)?m:0; }
 
 function calcATR(candles, period) {
   period = period || 14;
@@ -1205,10 +1222,14 @@ function calcRisk(type) {
 
 // ── Show plan tab ──
 function showPlan(style) {
-  document.querySelectorAll('.stab').forEach(function(t){t.className=t.className.replace(' active','');});
-  document.querySelectorAll('.plan-panel').forEach(function(p){p.classList.remove('active');});
-  document.getElementById('tab-'+style).classList.add('active');
-  document.getElementById('panel-'+style).classList.add('active');
+  document.querySelectorAll('.stab').forEach(function(t){ t.classList.remove('active'); });
+  document.querySelectorAll('.plan-panel').forEach(function(p){ p.classList.remove('active'); });
+  var tabEl = document.getElementById('tab-'+style);
+  var panelEl = document.getElementById('panel-'+style);
+  if (tabEl) tabEl.classList.add('active');
+  if (panelEl) panelEl.classList.add('active');
+  /* Scroll panel to top on switch */
+  if (panelEl) panelEl.scrollTop = 0;
 }
 
 // ── Checklist toggle ──
@@ -1223,7 +1244,12 @@ function runFullAnalysis() {
   if (_analysisRunning) return;
   _analysisRunning = true;
   var statusEl = document.getElementById('analysis-status');
-  if (statusEl) { statusEl.textContent = 'Fetching live data…'; statusEl.style.color='var(--warn)'; }
+  if (statusEl) { statusEl.textContent = '⏳ Fetching live data…'; statusEl.style.color='var(--warn)'; }
+  /* Show loading overlay only on first load */
+  if (!liveData.price) {
+    var ov = document.getElementById('load-overlay');
+    if (ov) ov.classList.add('show');
+  }
 
   Promise.all([
     fetchTicker(),
@@ -1234,7 +1260,7 @@ function runFullAnalysis() {
   ]).then(function(results) {
     var c4h = results[1] || [], c1h = results[2] || [], c15 = results[3] || [];
     var p = liveData.price;
-    if (!p || !c4h.length) { _analysisRunning=false; return; }
+    if (!p || !c4h.length) { _analysisRunning=false; if(statusEl){statusEl.textContent='⚠️ No data — retrying…';statusEl.style.color='var(--red)';} setTimeout(runFullAnalysis,5000); return; }
 
     // Sync live price to last candle
     if (c4h.length) { c4h[c4h.length-1].c = p; if(p>c4h[c4h.length-1].h)c4h[c4h.length-1].h=p; if(p<c4h[c4h.length-1].l)c4h[c4h.length-1].l=p; }
@@ -1244,6 +1270,8 @@ function runFullAnalysis() {
     var result = runStrictAnalysis(c4h, c1h, c15, p);
     liveData.analysis = result;
 
+    var ov = document.getElementById('load-overlay');
+    if (ov) ov.classList.remove('show');
     renderSignalPanels(result);
     calcRisk('s'); calcRisk('i'); calcRisk('sw');
 
@@ -1254,7 +1282,9 @@ function runFullAnalysis() {
     _analysisRunning = false;
   }).catch(function(e) {
     _analysisRunning = false;
-    if (statusEl) { statusEl.textContent = 'Error: '+e.message; statusEl.style.color='var(--red)'; }
+    var ov2 = document.getElementById('load-overlay');
+    if (ov2) ov2.classList.remove('show');
+    if (statusEl) { statusEl.textContent = '⚠️ Error: '+e.message; statusEl.style.color='var(--red)'; }
   });
 }
 
@@ -1263,7 +1293,21 @@ function init() {
   var ist=now.toLocaleString('en-IN',{timeZone:'Asia/Kolkata',dateStyle:'medium',timeStyle:'short'});
   var gt=document.getElementById('genTime'); if(gt)gt.textContent=ist+' IST';
   runFullAnalysis();
-  setInterval(function() { fetchTicker(); if(liveData.candles.h4&&liveData.candles.h4.length){var p=liveData.price;var c4=liveData.candles.h4;c4[c4.length-1].c=p;if(p>c4[c4.length-1].h)c4[c4.length-1].h=p;if(p<c4[c4.length-1].l)c4[c4.length-1].l=p;if(liveData.analysis)renderSignalPanels(runStrictAnalysis(liveData.candles.h4,liveData.candles.h1,liveData.candles.m15,p));} }, 5000);
+  setInterval(function() {
+    fetchTicker();
+    var c4=liveData.candles.h4, c1=liveData.candles.h1, c15=liveData.candles.m15;
+    var p=liveData.price;
+    if(p>0 && c4 && c4.length && c1 && c15 && c15.length){
+      /* Sync live price to last candle */
+      c4[c4.length-1].c=p;
+      if(p>c4[c4.length-1].h)c4[c4.length-1].h=p;
+      if(p<c4[c4.length-1].l)c4[c4.length-1].l=p;
+      if(liveData.analysis){
+        try{renderSignalPanels(runStrictAnalysis(c4,c1,c15,p));}
+        catch(e){}
+      }
+    }
+  }, 5000);
   setInterval(runFullAnalysis, 60000);
   setInterval(fetchUSDTDom, 30000);
 }

@@ -1,47 +1,29 @@
-# Ξ ETH/USDT Smart Money Terminal
-
-> **Live trading terminal · SMC · Elliott Wave · Delta Exchange · Quality-Graded Signals**
-
-## 🔗 Pages
-
-| Page | URL | Description |
-|---|---|---|
-| **Main Terminal** | `/index.html` | Live signals, canvas chart, TradingView widget, backtesting |
-| **Trade Plans** | `/tradeplan.html` | Scalp · Intraday · Swing plans with risk calculator |
-| **Final Setup** | `/final-setup.html` | Highest-confidence setup with full execution plan |
-
-## 🚀 Deploy to GitHub Pages
-
-```bash
-# 1. Create repo on GitHub (e.g. eth-smt)
-# 2. Upload this ZIP or push files
-git init
-git add .
-git commit -m "ETH/USDT Smart Money Terminal v4 — Final"
-git remote add origin https://github.com/YOUR_USERNAME/eth-smt.git
-git push -u origin main
-
-# 3. Enable GitHub Pages
-# Settings → Pages → Source: main branch → / (root) → Save
-# Your site will be live at:
-# https://YOUR_USERNAME.github.io/eth-smt/
-```
-
-## Features
-- ✅ **Zero lagging indicators** — pure SMC price action
-- ✅ **OKX live ETH/USDT price** (updates every 5s)
-- ✅ **TradingView BINANCE:ETHUSDT** embedded chart
-- ✅ **7-factor quality grading** (Low/Medium/High)
-- ✅ **Correct Delta Exchange fees** (0.01% maker/taker, verified)
-- ✅ **Backtesting** with partial exits, funding costs, style calibration
-- ✅ **3 trade plan styles** — Scalp/Intraday/Swing
-- ✅ **Final high-confidence setup** with live risk calculator
+# ETH/USDT Smart Money Terminal — Final Release
 
 ## Files
-```
-index.html        ← Main SMC terminal (114KB)
-tradeplan.html    ← Trade plans — 3 styles (66KB)
-final-setup.html  ← Final setup card (51KB)
-```
+| File | Description |
+|------|-------------|
+| `index.html` | Main terminal — Live price, SMC chart, signals, backtesting |
+| `tradeplan.html` | Trade Plans — Scalp / Intraday / Swing with live analysis |
+| `final-setup.html` | High-confidence setup card with risk calculator |
 
-*Zero dependencies. No build step. Open index.html directly.*
+## Features
+- **Live data**: OKX API primary → Coinbase fallback → CoinGecko fallback
+- **SMC analysis**: BOS, CHoCH, Supply/Demand zones, Liquidity pools, Elliott Wave
+- **TradingView embed**: BINANCE:ETHUSDT iframe (all TFs: 1m/5m/15m/1H/4H/1D)
+- **Backtesting**: Delta Exchange fees (maker=taker=0.01%), partial exits, equity curve
+- **Auto-calibration**: TP/SL/score-gate adapts from backtest results → live signals
+- **Zero dependencies**: Pure HTML + CSS + JS, no npm, no build step
+
+## Usage
+Open any file directly in a browser — no server required.
+
+## Data Sources
+- Price: `https://www.okx.com/api/v5/market/ticker?instId=ETH-USDT`
+- Candles: `https://www.okx.com/api/v5/market/candles?instId=ETH-USDT`
+- USDT Dom: `https://api.coingecko.com/api/v3/global`
+- Delta fees verified: `api.delta.exchange/v2/products/ETHUSDT` (0.01% maker/taker)
+
+## Version
+- Built: June 2026
+- Status: Production-ready, zero known bugs

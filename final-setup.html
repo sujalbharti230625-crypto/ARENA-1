@@ -544,11 +544,11 @@ body{
 
 <script>
 'use strict';
-function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function esc(s){if(s===null||s===undefined)return'';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 var livePrice=1629;
 
 function fetchPrice(){
-  fetch('https://www.okx.com/api/v5/market/ticker?instId=ETH-USDT')
+  return fetch('https://www.okx.com/api/v5/market/ticker?instId=ETH-USDT')
     .then(function(r){return r.json();})
     .then(function(d){
       var t=d.data&&d.data[0];if(!t)return;
@@ -582,7 +582,7 @@ function buildLadder(price){
     {p:1504.40,cls:'',       label:'SWING LOW',   col:'rgba(0,230,118,.7)',note:'Wave A end / major low'},
   ];
   var maxP=1680,minP=1490,range=maxP-minP||1;
-  document.getElementById('ladderBody').innerHTML=levels.map(function(lv){
+  var _lbEl=document.getElementById('ladderBody');if(!_lbEl)return;_lbEl.innerHTML=levels.map(function(lv){
     var barW=Math.max(5,Math.round((lv.p-minP)/range*100));
     var isCurr=Math.abs(lv.p-price)<4;
     return'<div class="lr2 '+(isCurr?'curr':lv.cls)+'">'
