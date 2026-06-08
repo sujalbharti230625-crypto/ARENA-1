@@ -225,6 +225,35 @@ body{background:var(--bg0);color:var(--text);font-family:'Segoe UI',system-ui,mo
 ::-webkit-scrollbar{width:3px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+/* ── Rendering performance fixes ──
+   Prevents blank-on-first-load by forcing GPU compositing on sticky elements.
+   Also prevents the "needs window toggle to render" bug. */
+body{
+  /* Force hardware acceleration on the entire page */
+  -webkit-transform:translateZ(0);
+  transform:translateZ(0);
+}
+.topbar,.style-nav{
+  /* GPU layer for sticky elements — prevents compositing issues */
+  will-change:transform;
+  -webkit-transform:translate3d(0,0,0);
+  transform:translate3d(0,0,0);
+  backface-visibility:hidden;
+}
+.setup-card,.setup,.icard,.acard,.verdict,.exec-card{
+  /* GPU layer for cards — prevents paint flicker on first render */
+  will-change:transform;
+  -webkit-backface-visibility:hidden;
+  backface-visibility:hidden;
+}
+/* Ensure text is immediately visible without waiting for custom fonts */
+*{font-display:swap}
+/* Force immediate layout calculation */
+.main,.page,.plan-grid,.exec-grid,.setup-grid{
+  contain:layout style;
+}
+
 </style>
 </head>
 <body>
@@ -614,7 +643,21 @@ function init(){
   calcR();
   setInterval(fetchPrice,5000);
 }
-init();
+/* Fix: Use DOMContentLoaded + rAF to ensure DOM is fully painted before init.
+   This prevents the "blank on first load, works after window toggle" bug caused
+   by inline scripts running before browser layout is finalized. */
+if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded',function(){
+    requestAnimationFrame(function(){
+      requestAnimationFrame(init); /* double rAF ensures layout is complete */
+    });
+  });
+}else{
+  /* DOM already ready (e.g. script at bottom of body) */
+  requestAnimationFrame(function(){
+    requestAnimationFrame(init);
+  });
+}
 </script>
 </body>
 </html>

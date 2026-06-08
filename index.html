@@ -623,6 +623,11 @@ body{
 @media(max-width:1100px){.sidebar-r{width:0;border:none}.stats-strip .ss-item:nth-child(n+4){display:none}}
 @media(max-width:800px){.sidebar-l{width:0;border:none}.stats-strip{display:none}}
 @media(max-width:600px){.topbar{padding:0 10px}.tick-price{font-size:1.2rem}}
+
+/* ── GPU compositing fix: prevents blank-on-first-load ── */
+.topbar,.nav{will-change:transform;transform:translateZ(0);backface-visibility:hidden;}
+.sidebar-l,.sidebar-r,.chart-center{will-change:transform;backface-visibility:hidden;}
+#priceCanvas{will-change:transform;}
 </style>
 </head>
 <body>
@@ -841,7 +846,11 @@ function fetchPrice(){
       S.vol24=parseFloat(t.vol24h)||0; S.source='OKX';
       document.getElementById('sOKX').textContent='Live ✓'; document.getElementById('sOKX').style.color='var(--green)';
       document.getElementById('hSrc').textContent='OKX'; var _st=document.getElementById('ctSrc');if(_st)_st.textContent='⬤ OKX ETH-USDT';
-      updateHeader(); runAnalysis();
+      updateHeader();
+      /* FIX-3: Sync live price into forming candle then recompute signals */
+      syncLivePriceToCandles();
+      if(S.loaded&&S.candles.length>5){computeAll();requestAnimationFrame(drawChart);}
+      else runAnalysis();
     })
     .catch(function(){
       return fetch('https://api.exchange.coinbase.com/products/ETH-USD/ticker')
@@ -874,12 +883,33 @@ function fetchPrice(){
               if(!S.price){S.price=1634;}
               if(!S.open24){S.open24=S.price*0.99;}
               updateHeader();
+              /* FIX-2: Sync candle + trigger analysis even on full fallback */
+              syncLivePriceToCandles();
+              if(S.loaded&&S.candles.length>5)computeAll();
             });
         });
     });
 }
 
 var OKX_BAR={'15m':'15m','1h':'1H','4h':'4H','1d':'1D','1w':'1W'};
+
+
+/* ═══ syncLivePriceToCandles — keeps the forming candle fresh ═══
+   Called after every price update AND after every candle fetch.
+   Without this, the last (forming) candle has a stale close that
+   causes signals to lag behind the live price. */
+function syncLivePriceToCandles(){
+  if(!S.candles||!S.candles.length||!S.price||S.price<=0)return;
+  var last=S.candles[S.candles.length-1];
+  if(!last)return;
+  /* Always update the last candle's close to live price */
+  last.c=S.price;
+  /* Also extend the high/low to include live price */
+  if(S.price>last.h)last.h=S.price;
+  if(S.price<last.l)last.l=S.price;
+  /* Mark as unconfirmed (forming) */
+  last.confirm=0;
+}
 
 function fetchCandles(tf){
   var bar=OKX_BAR[tf]||'1H';
@@ -891,9 +921,12 @@ function fetchCandles(tf){
       var raw=d.data,candles=[];
       for(var i=raw.length-1;i>=0;i--){
         var c=raw[i];
-        candles.push({t:+c[0],o:+c[1],h:+c[2],l:+c[3],c:+c[4],v:+c[5]});
+        candles.push({t:+c[0],o:+c[1],h:+c[2],l:+c[3],c:+c[4],v:+c[5],confirm:+c[8]||0});
       }
       S.candles=candles; S.loaded=true;
+      /* FIX-1: Inject live price into the forming (unconfirmed) last candle.
+         OKX confirm=0 means the bar is still open — its close is the live price. */
+      syncLivePriceToCandles();
       document.getElementById('chartLoad').style.display='none';
       computeAll(); drawChart();
     })
@@ -908,6 +941,7 @@ function fetchCandles(tf){
           var candles=[];
           for(var i=data.length-1;i>=0;i--){var c=data[i];candles.push({t:c[0]*1000,o:c[3],h:c[2],l:c[1],c:c[4],v:c[5]});}
           S.candles=candles; S.loaded=true;
+          syncLivePriceToCandles(); /* FIX-7: sync in Coinbase fallback too */
           document.getElementById('chartLoad').style.display='none';
           computeAll(); drawChart();
         })
@@ -927,7 +961,8 @@ function fetchUSDTDom(){
       if(S.price&&S.open24){
         var chg=(S.price-S.open24)/S.open24;
         S.prevUsdtDom=S.usdtDom;
-        S.usdtDom=Math.max(4,Math.min(12,S.usdtDom-chg*2+(Math.random()-.5)*.04));
+        /* FIX-3: Remove random noise from USDT dom approximation */
+        S.usdtDom=Math.max(4,Math.min(12,S.usdtDom-chg*2));
         document.getElementById('hDom').textContent=S.usdtDom.toFixed(2)+'%~';
       }
     });
@@ -946,6 +981,7 @@ function synthCandles(tf){
     candles.push({t:now-(250-i)*ms,o:o,h:Math.max(o,price)+rng*.6,l:Math.min(o,price)-rng*.4,c:price,v:800+Math.random()*6000});
   }
   S.candles=candles;S.loaded=true;
+  syncLivePriceToCandles(); /* FIX-8: sync in synth fallback */
   document.getElementById('chartLoad').style.display='none';
   computeAll();drawChart();
 }
@@ -954,10 +990,13 @@ function synthCandles(tf){
    2. SMC ANALYSIS ENGINE
    ═══════════════════════════════════════════════════════════════════ */
 function computeAll(){
-  if(!S.price||S.price<=0)return; /* BUG-03: wait for valid price */
+  if(!S.price||S.price<=0)return;
   var c=S.candles;if(!c||c.length<20)return;
+  syncLivePriceToCandles();
   computeZones(c);computeStructure(c);computePatterns(c);computeEW(c);
   gradeQuality();genSignal();renderRight();
+  /* FIX-9: Update chart overlay (signal levels, zones) on each analysis */
+  if(S.loaded)requestAnimationFrame(drawChart);
 }
 
 function computeZones(c){
@@ -969,7 +1008,7 @@ function computeZones(c){
     if(c[i].c<c[i].o&&cb>pb*1.5&&br>.6)sup.push({top:c[i].o,bot:c[i].c,str:str,fresh:i>c.length-30,i:i});
     if(c[i].c>c[i].o&&cb>pb*1.5&&br>.6)dem.push({top:c[i].c,bot:c[i].o,str:str,fresh:i>c.length-30,i:i});
   }
-  var cp=S.price||c[c.length-1].c;
+  var cp=S.price>0?S.price:c[c.length-1].c; /* FIX-6: always prefer live price */
   sup.sort(function(a,b){return Math.abs((a.top+a.bot)/2-cp)-Math.abs((b.top+b.bot)/2-cp)});
   dem.sort(function(a,b){return Math.abs((a.top+a.bot)/2-cp)-Math.abs((b.top+b.bot)/2-cp)});
   S.supplyZ=sup.slice(0,4);S.demandZ=dem.slice(0,4);
@@ -1146,7 +1185,7 @@ function genSignal(){
     cfs=['No strong confluence','Await BOS/CHoCH','Watch S/D zone reaction'];
   }
   var rr=Math.abs(entry-sl)>0?Math.abs(tp2-entry)/Math.abs(entry-sl):0;
-  S.signal={type:type,entry:entry,sl:sl,tp1:tp1,tp2:tp2,tp3:tp3,desc:desc,cfs:cfs,rr:rr.toFixed(1),ew:ew,total:total};
+  S.signal={type:type,entry:entry,sl:sl,tp1:tp1,tp2:tp2,tp3:tp3,desc:desc,cfs:cfs,rr:rr.toFixed(1),ew:ew,total:total,priceAtSignal:S.price,tf:S.tf,generatedAt:Date.now()};
   renderSig();
 }
 
@@ -1479,6 +1518,17 @@ function renderSig(){
 
   var h='';
 
+  /* FIX-12: Price anchor bar */
+  var _priceDrift=sig.priceAtSignal&&S.price?Math.abs(sig.priceAtSignal-S.price)/S.price:0;
+  h+='<div id="sigFreshness" style="background:rgba(0,198,255,.06);border:1px solid rgba(0,198,255,.14);border-radius:6px;padding:5px 10px;margin-bottom:8px;font-size:.63rem;color:var(--accent);display:flex;align-items:center;gap:6px;flex-wrap:wrap;">'
+    +'<span>📍</span><span>'+S.tf.toUpperCase()+' signal</span>'
+    +'<span style="color:var(--text2)">·</span>'
+    +'<span>Price: <strong style="color:#fff">'+fmt(S.price)+'</strong></span>'
+    +'<span style="color:var(--text2)">·</span>'
+    +'<span style="color:var(--text2)">'+new Date().toLocaleTimeString()+'</span>'
+    +(_priceDrift>0.005?'<span style="margin-left:auto;color:var(--warn)">⚠ +'+(_priceDrift*100).toFixed(1)+'% drift</span>':'')
+    +'</div>';
+
   /* Quality banner */
   h+='<div class="quality-banner '+q.grade+'">'
     +'<div class="qb-icon">'+qIcons[q.grade]+'</div>'
@@ -1503,6 +1553,7 @@ function renderSig(){
     +'<div class="sig-dir '+sig.type+'">'+icons[sig.type]+' '+dirLabels[sig.type]+'</div>'
     +'<div class="sig-title">'+(sig.type==='long'?'Smart Money Long':sig.type==='short'?'Smart Money Short':'No Trade — Wait')+'</div>'
     +'<div class="sig-desc">'+esc(sig.desc)+'</div>'
+    +(sig.priceAtSignal&&S.price&&Math.abs(sig.priceAtSignal-S.price)/S.price>0.005?'<div style="background:rgba(255,152,0,.1);border:1px solid rgba(255,152,0,.25);border-radius:5px;padding:4px 8px;font-size:.62rem;color:var(--warn);margin-bottom:6px">⚠️ Price moved: was '+fmt(sig.priceAtSignal)+' → now '+fmt(S.price)+'</div>':'')
     +'<div class="lvls">'
     +'<div class="lvl-row entry"><span class="lvl-l">⦿ Entry</span><div><span class="lvl-v e">'+fmt(sig.entry)+'</span></div></div>'
     +'<div class="lvl-row sl"><span class="lvl-l">🛑 Stop Loss</span><div><span class="lvl-v s">'+fmt(sig.sl)+'</span><span class="lvl-pct loss">Risk</span></div></div>'
@@ -1551,6 +1602,14 @@ function renderSig(){
   if(sigEl)sigEl.style.color=sig.type==='long'?'var(--green)':sig.type==='short'?'var(--red)':'var(--text2)';
   var waveEl=document.getElementById('hWave');
   if(waveEl)waveEl.textContent='Wave '+wv+' ('+esc(ew.phase)+')';
+  /* FIX-9: Record signal generation time for freshness display */
+  S.lastSignalTime=Date.now();
+  S.lastSignalTF=S.tf;
+  var freshEl=document.getElementById('sigFreshness');
+  if(freshEl){
+    freshEl.textContent=S.tf.toUpperCase()+' signal · Price: '+fmt(S.price)+' · '+new Date().toLocaleTimeString();
+    freshEl.style.color='var(--green)';
+  }
 }
 
 
@@ -2278,10 +2337,13 @@ function exportCSV(){
 }
 
 function resetBT(){
-  S._btRendered=false; /* BUG-13 FIX: allow rebuild */
+  S._btRendered=false;
   var res=document.getElementById('btRes');if(res)res.style.display='none';
   var stat=document.getElementById('btStat');if(stat)stat.textContent='';
-  document.getElementById('btnExp').style.display='none';
+  var exp=document.getElementById('btnExp');if(exp)exp.style.display='none';
+  /* FIX-8: Also clear progress bar */
+  var prog=document.getElementById('bpBar');if(prog)prog.style.width='0%';
+  var pw=document.getElementById('bpWrap');if(pw)pw.style.display='none';
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -2303,11 +2365,20 @@ function switchView(v){
   }
 }
 
-function setTF(tf,btnId){ /* BUG-11: intervals managed in init() */
-  S.tf=tf;S.loaded=false;
+function setTF(tf,btnId){
+  S.tf=tf;
+  /* FIX-4: Clear candle cache on TF switch — forces fresh API data
+     Prevents stale signals from previous timeframe candles */
+  S.candles=[];
+  S.loaded=false;
+  S.signal=null;  /* clear old signal immediately */
+  S.quality=null;
   document.querySelectorAll('.tf-btn').forEach(function(b){b.classList.remove('active');});
   var btn=document.getElementById(btnId);if(btn)btn.classList.add('active');
-  document.getElementById('chartLoad').style.display='flex';
+  var cl=document.getElementById('chartLoad');if(cl)cl.style.display='flex';
+  /* Clear signal panel to avoid showing stale signal during fetch */
+  var sp=document.getElementById('sigPanel');
+  if(sp)sp.innerHTML='<div style="padding:20px;text-align:center;color:var(--text2);font-size:.75rem">Loading '+tf.toUpperCase()+' data…</div>';
   fetchCandles(tf);
 }
 
@@ -2322,6 +2393,11 @@ function tog(name){
    10. INIT
    ═══════════════════════════════════════════════════════════════════ */
 function init(){
+  /* FIX: Clear any existing intervals before setting new ones (prevents leaks) */
+  if(S._priceInterval)clearInterval(S._priceInterval);
+  if(S._candleInterval)clearInterval(S._candleInterval);
+  if(S._domInterval)clearInterval(S._domInterval);
+
   document.getElementById('analysisView').style.display='none';
   document.getElementById('backtestingView').style.display='none';
   document.getElementById('tradingView').style.display='grid';
@@ -2334,7 +2410,11 @@ function init(){
     if(cw)_ro.observe(cw);
   }
   window.addEventListener('resize',dbc(function(){if(S.loaded)requestAnimationFrame(drawChart);},150));
-  S._priceInterval=setInterval(function(){fetchPrice().then(function(){fetchUSDTDom();if(S.loaded)requestAnimationFrame(drawChart);});},5000); /* BUG-11 FIX */
+  /* FIX-10: 3s price refresh for fresher signals (was 5s) */
+  /* FIX-4: Price refresh — fetchPrice internally calls computeAll+drawChart via sync chain */
+  S._priceInterval=setInterval(function(){fetchPrice();},3000);
+  /* USDT dom updates less frequently (every 30s) */
+  S._domInterval=setInterval(fetchUSDTDom,30000);
   S._candleInterval=setInterval(function(){if(document.getElementById('tradingView').style.display!=='none')fetchCandles(S.tf);},60000);
 }
 /* ═══════════════════════════════════════════════════════════════════
@@ -2459,7 +2539,14 @@ function initAll(){
   /* FIX-5: Give DOM and initial data load time to settle before TV widget */
   setTimeout(function(){initTVWidget(TV.interval);},800);
 }
-initAll();
+/* Fix: DOMContentLoaded + double-rAF for reliable first-paint across all browsers */
+if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded',function(){
+    requestAnimationFrame(function(){requestAnimationFrame(initAll);});
+  });
+}else{
+  requestAnimationFrame(function(){requestAnimationFrame(initAll);});
+}
 
 </script>
 </body>
