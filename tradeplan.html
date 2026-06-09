@@ -2,6 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<link rel="preconnect" href="https://www.okx.com" crossorigin>
+<link rel="preconnect" href="https://api.coingecko.com" crossorigin>
+<link rel="preconnect" href="https://api.exchange.coinbase.com" crossorigin>
+<link rel="dns-prefetch" href="https://www.tradingview.com">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ETH/USDT — Trade Plans</title>
 <style>
@@ -22,7 +26,6 @@ body{
   -webkit-font-smoothing:antialiased;
 }
 
-/* ── TOP BAR ── */
 .topbar{
   height:52px;background:linear-gradient(90deg,#020d16,#050f1a);
   border-bottom:1px solid var(--border);padding:0 20px;
@@ -51,7 +54,6 @@ body{
 @keyframes lp{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.6);opacity:.3}}
 .lpt{font-size:.6rem;font-weight:800;color:var(--green);letter-spacing:1.5px}
 
-/* ── STYLE TABS ── */
 .style-tabs{
   height:44px;background:var(--bg2);border-bottom:1px solid var(--border);
   display:flex;padding:0;gap:0;flex-shrink:0;
@@ -70,10 +72,8 @@ body{
 .stab.swing.active{color:var(--swing);border-color:var(--swing);background:rgba(0,230,118,.06)}
 .stab .tab-icon{font-size:1rem}
 
-/* ── MAIN WORKSPACE ── */
 .workspace{flex:1;overflow:hidden;position:relative;display:flex;min-height:0}
 
-/* ── PLAN PANELS (one per style, tabbed) ── */
 .plan-panel{
   position:absolute;inset:0;
   display:none;overflow-y:auto;overflow-x:hidden;
@@ -89,7 +89,6 @@ body{
 .load-sub{font-size:.65rem;color:var(--text2)}
 ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
 
-/* ── PANEL LAYOUT: left=setups, right=tools ── */
 .panel-inner{
   display:grid;
   grid-template-columns:1fr 340px;
@@ -101,7 +100,6 @@ body{
 .panel-left{padding:16px;border-right:1px solid var(--border);display:flex;flex-direction:column;gap:14px}
 .panel-right{padding:16px;background:var(--bg1);display:flex;flex-direction:column;gap:14px;position:sticky;top:0;height:fit-content;max-height:100vh;overflow-y:auto;overflow-x:hidden;flex-shrink:0;align-self:flex-start}
 
-/* ── SECTION HEADER ── */
 .sec-hdr{display:flex;align-items:center;gap:12px;margin-bottom:4px}
 .sec-icon{width:40px;height:40px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:1.4rem;flex-shrink:0}
 .sec-icon.scalp{background:rgba(168,85,247,.2);border:1px solid rgba(168,85,247,.35)}
@@ -111,7 +109,6 @@ body{
 .sec-title.scalp{color:var(--scalp)}.sec-title.intra{color:var(--intra)}.sec-title.swing{color:var(--swing)}
 .sec-sub{font-size:.7rem;color:var(--text2);margin-top:2px}
 
-/* ── ALERT BANNER ── */
 .alert{border-radius:8px;padding:10px 14px;display:flex;gap:9px;font-size:.73rem;line-height:1.5;align-items:flex-start;margin-bottom:4px}
 .alert.warn{background:rgba(255,152,0,.07);border:1px solid rgba(255,152,0,.22)}
 .alert.info{background:rgba(0,198,255,.06);border:1px solid rgba(0,198,255,.18)}
@@ -119,11 +116,9 @@ body{
 .alert.success{background:rgba(0,230,118,.06);border:1px solid rgba(0,230,118,.18)}
 .ai{font-size:1rem;flex-shrink:0;margin-top:1px}
 
-/* ── SETUP CARDS GRID ── */
 .setups-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media(max-width:900px){.setups-grid{grid-template-columns:1fr}.panel-inner{grid-template-columns:1fr}.panel-right{position:relative;height:auto}}
 
-/* ── SETUP CARD ── */
 .setup{border-radius:10px;padding:14px;border:1px solid var(--border);background:rgba(0,0,0,.2);position:relative;overflow:hidden}
 .setup::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
 .setup.long{border-color:rgba(0,230,118,.25)}.setup.long::before{background:linear-gradient(90deg,var(--green),transparent)}
@@ -138,7 +133,6 @@ body{
 .setup-title{font-size:.9rem;font-weight:800;color:#fff;margin-bottom:4px}
 .setup-desc{font-size:.7rem;color:var(--text2);line-height:1.5;margin-bottom:10px}
 
-/* ── LEVEL TABLE ── */
 .ltable{width:100%;border-collapse:collapse;margin-bottom:9px}
 .ltable tr{border-bottom:1px solid rgba(255,255,255,.04)}
 .ltable tr:last-child{border:none}
@@ -153,7 +147,6 @@ body{
 .lt-pct.gain2{background:rgba(255,215,0,.08);color:var(--gold)}
 .lt-note{font-size:.6rem;color:var(--text2);text-align:right;line-height:1.3}
 
-/* ── TAGS ── */
 .tags{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}
 .tag{padding:2px 7px;border-radius:9px;font-size:.6rem;font-weight:700;background:rgba(255,255,255,.06);color:var(--text2)}
 .tag.gold{background:rgba(255,215,0,.1);color:var(--gold)}
@@ -161,17 +154,14 @@ body{
 .tag.b{background:rgba(0,198,255,.08);color:var(--accent)}
 .tag.r{background:rgba(255,61,90,.08);color:var(--red)}
 
-/* ── SCORE BAR ── */
 .score-row{display:flex;justify-content:space-between;font-size:.6rem;color:var(--text2);margin-top:8px;margin-bottom:3px}
 .score-track{height:4px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden}
 .score-fill{height:100%;border-radius:2px;transition:width 1.2s ease}
 
-/* ── RIGHT PANEL CARDS ── */
 .rcard{background:var(--panel);border:1px solid var(--border);border-radius:9px;overflow:hidden}
 .rcard-hdr{background:var(--bg3);border-bottom:1px solid var(--border);padding:9px 13px;font-size:.63rem;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;display:flex;align-items:center;gap:5px}
 .rcard-body{padding:13px}
 
-/* ── CONFLUENCE TABLE ── */
 .cf-row{display:flex;align-items:flex-start;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:.71rem}
 .cf-row:last-child{border:none}
 .cf-icon{font-size:.9rem;flex-shrink:0;margin-top:1px}
@@ -179,7 +169,6 @@ body{
 .cf-status{font-size:.65rem;font-weight:800;flex-shrink:0}
 .cf-status.yes{color:var(--green)}.cf-status.pend{color:var(--warn)}.cf-status.risk{color:var(--red)}
 
-/* ── RISK CALCULATOR ── */
 .rc-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:8px}
 .rc-f{display:flex;flex-direction:column;gap:3px}
 .rc-l{font-size:.58rem;color:var(--text2);font-weight:700;text-transform:uppercase}
@@ -191,7 +180,6 @@ body{
 .rcl{color:var(--text2)}.rcv{font-weight:800;color:var(--text);font-family:monospace}
 .rcv.g{color:var(--green)}.rcv.r{color:var(--red)}.rcv.gold{color:var(--gold)}
 
-/* ── TIMELINE ── */
 .tl{position:relative;padding-left:17px}
 .tl::before{content:'';position:absolute;left:4px;top:0;bottom:0;width:1px;background:var(--border)}
 .tl-item{position:relative;margin-bottom:11px}
@@ -203,7 +191,6 @@ body{
 .tl-t{font-size:.58rem;color:var(--text2);font-weight:800;text-transform:uppercase;margin-bottom:1px;letter-spacing:.4px}
 .tl-x{font-size:.7rem;color:var(--text);line-height:1.4}
 
-/* ── CHECKLIST ── */
 .cl{list-style:none}
 .cl li{display:flex;align-items:flex-start;gap:7px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:.7rem}
 .cl li:last-child{border:none}
@@ -214,7 +201,6 @@ body{
 .cl-tag.must{background:rgba(255,61,90,.14);color:var(--red)}
 .cl-tag.good{background:rgba(0,230,118,.1);color:var(--green)}
 
-/* ── STRUCT BARS ── */
 .struct-bar{display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:.7rem}
 .struct-bar:last-child{border:none}
 .struct-tf{font-size:.62rem;font-weight:800;color:var(--text2);width:32px;flex-shrink:0}
@@ -226,7 +212,6 @@ body{
 .struct-label{font-size:.63rem;font-weight:800;width:52px;text-align:right;flex-shrink:0}
 .struct-label.bull{color:var(--green)}.struct-label.bear{color:var(--red)}.struct-label.neut{color:var(--warn)}
 
-/* ── PRICE LADDER ── */
 .ladder{font-size:.7rem;font-family:monospace;line-height:2.1}
 .ldr-row{display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.025)}
 .ldr-row:last-child{border:none}
@@ -237,16 +222,21 @@ body{
 .ldr-label{font-size:.62rem;font-weight:700;width:72px;text-align:right;flex-shrink:0}
 .ldr-note{font-size:.58rem;color:var(--text2);width:120px;text-align:right;flex-shrink:0;line-height:1.3}
 
-/* ── STATUSBAR ── */
 .statusbar{height:22px;background:var(--bg2);border-top:1px solid var(--border);padding:0 16px;display:flex;align-items:center;gap:18px;font-size:.58rem;color:var(--text2);flex-shrink:0}
 .sbd{width:4px;height:4px;border-radius:50%;background:var(--green);flex-shrink:0}
 
-/* GPU compositing — prevents blank-on-first-load */
 .topbar,.style-tabs{will-change:transform;transform:translateZ(0);backface-visibility:hidden;}
 .plan-panel.active{will-change:scroll-position;}
+
+#loadBar{position:fixed;top:0;left:0;height:2px;width:0%;z-index:9999;
+background:linear-gradient(90deg,#00c6ff,#00e676);
+transition:width .3s ease;pointer-events:none;
+box-shadow:0 0 8px rgba(0,198,255,.6);}
+#loadBar.done{width:100%;opacity:0;transition:width .2s ease,opacity .4s ease .1s;}
 </style>
 </head>
 <body>
+<div id="loadBar"></div>
 
 <!-- TOP BAR -->
 <div class="topbar">
@@ -693,20 +683,32 @@ body{
 
 <script>
 'use strict';
+/* ── Fast fetch with 8s timeout — prevents 30s+ hangs on stalled API ── */
+function tFetch(url, opts) {
+  var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  var timer = ctrl ? setTimeout(function() { ctrl.abort(); }, 8000) : null;
+  var p = fetch(url, ctrl ? Object.assign({signal: ctrl.signal}, opts||{}) : (opts||{}));
+  if (timer) p.then(function() { clearTimeout(timer); }, function() { clearTimeout(timer); });
+  return p;
+}
+var _lb=document.getElementById('loadBar');
+function _lbSet(w){if(_lb)_lb.style.width=w+'%';}
+function _lbDone(){if(_lb){_lb.classList.add('done');setTimeout(function(){if(_lb)_lb.style.display='none';},600);}}
+
+
 
 var liveData = {
   price: 0, open24: 0, high24: 0, low24: 0, vol24: 0,
   usdt_dom: 8.32, usdt_dom_prev: 8.38,
   atr: { m15: 0, h1: 0, h4: 0, d1: 0 },
   candles: { m15: [], h1: [], h4: [], d1: [], w1: [] },
-  /* Top-down bias determined by macro timeframes */
-  topDownBias: 'NEUTRAL',   /* BULL | BEAR | NEUTRAL */
-  topDownStrength: 0,       /* 0-100 */
-  topDownStack: [],         /* per-TF verdict array */
+
+  topDownBias: 'NEUTRAL',    
+  topDownStrength: 0,        
+  topDownStack: [],          
   analysis: null
 };
 
-// ── Price display ──
 function updatePriceDisplay(p, o) {
   var chg = (p-o)/o*100, up = chg >= 0;
   var pe = document.getElementById('livePrice');
@@ -718,9 +720,8 @@ function updatePriceDisplay(p, o) {
   document.querySelectorAll('.dyn-price').forEach(function(el){ el.textContent = p.toFixed(2); });
 }
 
-// ── Fetch live ticker ──
 function fetchTicker() {
-  return fetch('https://www.okx.com/api/v5/market/ticker?instId=ETH-USDT')
+  return tFetch('https://www.okx.com/api/v5/market/ticker?instId=ETH-USDT')
     .then(function(r){ return r.json(); })
     .then(function(d){
       var t = d.data && d.data[0]; if (!t) return;
@@ -738,12 +739,11 @@ function fetchTicker() {
   });
 }
 
-// ── Fetch OHLCV candles ──
 function fetchCandles(tf, limit) {
   limit = limit || 100;
   var barMap = {'15m':'15m','1h':'1H','4h':'4H','1d':'1D','1w':'1W'};
   var bar = barMap[tf] || '1H';
-  return fetch('https://www.okx.com/api/v5/market/candles?instId=ETH-USDT&bar='+bar+'&limit='+limit)
+  return tFetch('https://www.okx.com/api/v5/market/candles?instId=ETH-USDT&bar='+bar+'&limit='+limit)
     .then(function(r){ return r.json(); })
     .then(function(d){
       if (!d.data || d.data.length < 10) return [];
@@ -753,9 +753,8 @@ function fetchCandles(tf, limit) {
     }).catch(function(){ return []; });
 }
 
-// ── USDT Dominance ──
 function fetchUSDTDom() {
-  return fetch('https://api.coingecko.com/api/v3/global')
+  return tFetch('https://api.coingecko.com/api/v3/global')
     .then(function(r){ return r.json(); })
     .then(function(d){
       var dom = d.data && d.data.market_cap_percentage && d.data.market_cap_percentage.usdt;
@@ -766,7 +765,7 @@ function fetchUSDTDom() {
         if (el) el.textContent = liveData.usdt_dom.toFixed(2) + '%';
       }
     }).catch(function(){
-    /* CoinGecko unreachable — approximate USDT dom from price momentum */
+
     if(liveData.price && liveData.open24) {
       var _chg=(liveData.price-liveData.open24)/liveData.open24;
       liveData.usdt_dom_prev=liveData.usdt_dom;
@@ -777,7 +776,6 @@ function fetchUSDTDom() {
   });
 }
 
-// ── Helper functions ──
 function amax(arr) { if(!arr||!arr.length)return 0; var m=arr[0]; for(var _i=1;_i<arr.length;_i++)if(isFinite(arr[_i])&&arr[_i]>m)m=arr[_i]; return isFinite(m)?m:0; }
 function amin(arr) { if(!arr||!arr.length)return 0; var m=arr[0]; for(var _j=1;_j<arr.length;_j++)if(isFinite(arr[_j])&&arr[_j]<m)m=arr[_j]; return isFinite(m)?m:0; }
 
@@ -795,7 +793,6 @@ function calcATR(candles, period) {
   return trs.length ? trs.reduce(function(s,v){return s+v;},0)/trs.length : 0;
 }
 
-// ── BOS: 2-bar confirmed Break of Structure ──
 function calcBOS(candles, lb, prev) {
   lb = lb || 5; prev = prev || 10;
   var n = candles.length;
@@ -810,7 +807,6 @@ function calcBOS(candles, lb, prev) {
   return {bull:bull, bear:bear, rh:rh, rl:rl, ph:ph, pl:pl};
 }
 
-// ── S/D Zone detection (strict: body ratio > 0.65, displacement > 1.5×) ──
 function calcSDZones(candles, price, window) {
   window = window || 30;
   var n = candles.length;
@@ -835,7 +831,6 @@ function calcSDZones(candles, price, window) {
   return {sup:sup.slice(0,4), dem:dem.slice(0,4)};
 }
 
-// ── Liquidity pools (swing highs/lows) ──
 function calcLiquidity(candles, price, sw) {
   sw = sw || 3;
   var n = candles.length;
@@ -855,7 +850,6 @@ function calcLiquidity(candles, price, sw) {
   return {bsl:bsl, ssl:ssl};
 }
 
-// ── Candle pattern ──
 function candlePattern(c) {
   var body = Math.abs(c.c - c.o);
   var rng  = c.h - c.l || 0.001;
@@ -870,35 +864,24 @@ function candlePattern(c) {
   return c.c > c.o ? 'Mild Bull' : 'Mild Bear';
 }
 
-// ═══════════════════════════════════════════════════════════
-//  TOP-DOWN BIAS ENGINE
-//  Cascade: Yearly trend → Weekly → Daily → 4H
-//  Rules:
-//   • Higher TF overrides lower TF completely
-//   • ALL macro TFs must agree → only then intraday trades fire
-//   • If macro conflict → NEUTRAL (no intraday signal)
-//   • Bias strength 0-100 drives intraday signal scoring
-// ═══════════════════════════════════════════════════════════
 function calcTopDownBias(cW, c1d, c4h, c1h, c15m, price) {
   'use strict';
 
-  /* Helper: trend direction of a candle array */
   function trendOf(c, longLookback, shortLookback) {
     if (!c || c.length < 5) return 'NEUTRAL';
     var n = c.length;
     var recent = c[n-1].c;
-    /* Long-term: direction from start of array */
+
     var longAgo = c[Math.max(0, n-longLookback)].o;
-    /* Short-term: last shortLookback candles */
+
     var shortAgo = c[Math.max(0, n-shortLookback)].o;
     var longDir  = recent > longAgo  ? 'BULL' : 'BEAR';
     var shortDir = recent > shortAgo ? 'BULL' : 'BEAR';
-    /* Both must agree for a clean trend */
+
     if (longDir === shortDir) return longDir;
-    return 'NEUTRAL';  /* conflicting momentum = ranging */
+    return 'NEUTRAL';   
   }
 
-  /* Helper: EMA approximation for trend filter */
   function ema(c, period) {
     if (!c || c.length < period) return c && c.length ? c[c.length-1].c : 0;
     var k = 2 / (period + 1);
@@ -907,7 +890,6 @@ function calcTopDownBias(cW, c1d, c4h, c1h, c15m, price) {
     return val;
   }
 
-  /* Helper: Higher High / Higher Low (uptrend) or Lower Low / Lower High (downtrend) */
   function swingStructure(c, sw) {
     sw = sw || 3;
     if (!c || c.length < sw*2+2) return 'NEUTRAL';
@@ -925,15 +907,14 @@ function calcTopDownBias(cW, c1d, c4h, c1h, c15m, price) {
     if (highs.length < 2 || lows.length < 2) return 'NEUTRAL';
     var lastH = highs[highs.length-1], prevH = highs[highs.length-2];
     var lastL = lows[lows.length-1],   prevL = lows[lows.length-2];
-    if (lastH > prevH && lastL > prevL) return 'BULL';  /* HH + HL */
-    if (lastH < prevH && lastL < prevL) return 'BEAR';  /* LH + LL */
+    if (lastH > prevH && lastL > prevL) return 'BULL';   
+    if (lastH < prevH && lastL < prevL) return 'BEAR';   
     return 'NEUTRAL';
   }
 
-  var stack = [];  /* per-TF verdict */
-  var scores = {}; /* per-TF score contribution */
+  var stack = [];   
+  var scores = {};  
 
-  /* ── TIER 1: Yearly bias (from weekly candles, ~52 bars = 1 year) ── */
   var yearlyBias = 'NEUTRAL';
   if (cW && cW.length >= 10) {
     var yrTrend   = trendOf(cW, Math.min(52, cW.length-1), Math.min(12, cW.length-1));
@@ -942,12 +923,12 @@ function calcTopDownBias(cW, c1d, c4h, c1h, c15m, price) {
     var yrAbove   = price > yrEma50;
     if (yrTrend === 'BULL' && yrStructure !== 'BEAR' && yrAbove)  yearlyBias = 'BULL';
     else if (yrTrend === 'BEAR' && yrStructure !== 'BULL' && !yrAbove) yearlyBias = 'BEAR';
-    else if (yrTrend !== 'NEUTRAL') yearlyBias = yrTrend; /* trend wins over structure if conflicting */
+    else if (yrTrend !== 'NEUTRAL') yearlyBias = yrTrend;  
     stack.push({ tf:'Yearly', bias:yearlyBias, trend:yrTrend, structure:yrStructure, emaAbove:yrAbove,
                  note: yearlyBias==='BULL'?'HH+HL · Price>50WMA · Macro uptrend':
                        yearlyBias==='BEAR'?'LH+LL · Price<50WMA · Macro downtrend':'Consolidation — no yearly edge' });
   } else {
-    /* Fallback: approximate from daily */
+
     if (c1d && c1d.length >= 30) {
       var d365 = c1d.slice(-Math.min(252, c1d.length));
       yearlyBias = trendOf(d365, d365.length-1, Math.floor(d365.length/4));
@@ -955,7 +936,6 @@ function calcTopDownBias(cW, c1d, c4h, c1h, c15m, price) {
     stack.push({ tf:'Yearly', bias:yearlyBias, note:'Approximate (weekly data limited)', trend:yearlyBias });
   }
 
-  /* ── TIER 2: Weekly bias (last 12 weeks of weekly candles) ── */
   var weeklyBias = 'NEUTRAL';
   if (cW && cW.length >= 4) {
     var wkSlice    = cW.slice(-Math.min(26, cW.length));
@@ -973,7 +953,6 @@ function calcTopDownBias(cW, c1d, c4h, c1h, c15m, price) {
     stack.push({ tf:'Weekly', bias:yearlyBias, note:'Insufficient weekly data — using yearly', trend:yearlyBias });
   }
 
-  /* ── TIER 3: Daily bias (last 30 daily candles) ── */
   var dailyBias = 'NEUTRAL';
   if (c1d && c1d.length >= 10) {
     var d30        = c1d.slice(-Math.min(60, c1d.length));
@@ -991,12 +970,11 @@ function calcTopDownBias(cW, c1d, c4h, c1h, c15m, price) {
                  note: dailyBias==='BULL'?'Daily BOS bull · HH/HL · Price>21EMA':
                        dailyBias==='BEAR'?'Daily BOS bear · LH/LL · Price<21EMA':'Daily indecision — no clean trend' });
   } else {
-    /* Proxy daily from 4H (last 30 4H candles ≈ 5 days is too short; use whole 4H array) */
+
     dailyBias = trendOf(c4h, Math.min(30, c4h.length-1), Math.min(6, c4h.length-1));
     stack.push({ tf:'Daily', bias:dailyBias, note:'Approximate from 4H (no daily data)', trend:dailyBias });
   }
 
-  /* ── TIER 4: 4H bias (confirmation layer, NOT the driver) ── */
   var fourHBias = 'NEUTRAL';
   if (c4h && c4h.length >= 10) {
     var h4s      = c4h.slice(-Math.min(50, c4h.length));
@@ -1014,14 +992,13 @@ function calcTopDownBias(cW, c1d, c4h, c1h, c15m, price) {
                        fourHBias==='BEAR'?'4H BOS bear · Momentum confirms':'4H ranging — low conviction' });
   }
 
-  /* ── TIER 5: 1H bias (entry confirmation layer) ── */
   var oneHBias = 'NEUTRAL';
   if (c1h && c1h.length >= 5) {
-    var h1Slice = c1h.slice(-Math.min(48, c1h.length)); /* last 48 hours */
+    var h1Slice = c1h.slice(-Math.min(48, c1h.length));  
     var h1n = h1Slice.length;
     var h1Trend = h1Slice[h1n-1].c > h1Slice[Math.max(0,h1n-24)].o ? 'BULL' : 'BEAR';
     var h1BOS = calcBOS(h1Slice, 3, 8);
-    /* 1H EMA9 for short-term momentum */
+
     var h1EMA = (function(c, p) {
       var k=2/(p+1), v=c[0].c;
       for(var i=1;i<c.length;i++) v=c[i].c*k+v*(1-k);
@@ -1038,10 +1015,9 @@ function calcTopDownBias(cW, c1d, c4h, c1h, c15m, price) {
     stack.push({ tf:'1H', bias:'NEUTRAL', note:'Insufficient 1H data', trend:'NEUTRAL' });
   }
 
-  /* ── TIER 6: 15m bias (execution confirmation — final entry gate) ── */
   var m15Bias = 'NEUTRAL';
   if (c15m && c15m.length >= 5) {
-    var m15Slice = c15m.slice(-Math.min(30, c15m.length)); /* last ~8h of 15m */
+    var m15Slice = c15m.slice(-Math.min(30, c15m.length));  
     var m15n = m15Slice.length;
     var m15Trend = m15Slice[m15n-1].c > m15Slice[Math.max(0,m15n-12)].o ? 'BULL' : 'BEAR';
     var m15BOS = calcBOS(m15Slice, 3, 6);
@@ -1049,7 +1025,7 @@ function calcTopDownBias(cW, c1d, c4h, c1h, c15m, price) {
       var k=2/(p+1), v=c[0].c;
       for(var i=1;i<c.length;i++) v=c[i].c*k+v*(1-k);
       return v;
-    })(m15Slice.slice(-5), 5); /* 5-period EMA on 15m */
+    })(m15Slice.slice(-5), 5);  
     var m15Above = price > m15EMA;
     if      (m15BOS.bull && m15Trend==='BULL') m15Bias = 'BULL';
     else if (m15BOS.bear && m15Trend==='BEAR') m15Bias = 'BEAR';
@@ -1061,68 +1037,49 @@ function calcTopDownBias(cW, c1d, c4h, c1h, c15m, price) {
     stack.push({ tf:'15m', bias:'NEUTRAL', note:'Insufficient 15m data', trend:'NEUTRAL' });
   }
 
-  /* ══════════════════════════════════════════════════════════
-     CASCADED BIAS RESOLUTION — 5-tier hierarchy
-     Yearly → Weekly → Daily → 4H → 1H
-     Rules:
-     1. Yearly is the macro master — sets allowed direction
-     2. Weekly must NOT contradict Yearly (else NEUTRAL)
-     3. Daily must NOT contradict Weekly (else NEUTRAL)
-     4. 4H is the intraday gate — conflict = half-strength
-     5. 1H is the entry gate — conflict blocks intraday trades
-     ══════════════════════════════════════════════════════════ */
   var biases = [yearlyBias, weeklyBias, dailyBias, fourHBias, oneHBias];
   var bullCount = biases.filter(function(b){ return b==='BULL'; }).length;
   var bearCount = biases.filter(function(b){ return b==='BEAR'; }).length;
 
   var finalBias = 'NEUTRAL';
 
-  /* Rule 1: Yearly sets the macro direction */
   if (yearlyBias === 'BULL') {
     if (weeklyBias !== 'BEAR' && dailyBias !== 'BEAR') finalBias = 'BULL';
-    else finalBias = 'NEUTRAL'; /* macro conflict — corrective move, no trades */
+    else finalBias = 'NEUTRAL';  
   } else if (yearlyBias === 'BEAR') {
     if (weeklyBias !== 'BULL' && dailyBias !== 'BULL') finalBias = 'BEAR';
-    else finalBias = 'NEUTRAL'; /* macro conflict — corrective bounce, no trades */
+    else finalBias = 'NEUTRAL';  
   } else {
-    /* Yearly neutral — Weekly leads */
+
     if (weeklyBias === dailyBias && weeklyBias !== 'NEUTRAL') finalBias = weeklyBias;
     else if (weeklyBias !== 'NEUTRAL') finalBias = weeklyBias;
     else finalBias = dailyBias;
   }
 
-  /* Rule 2: 4H conflict with macro → low conviction (pullback trade) */
   var fourHConflict = (finalBias === 'BULL' && fourHBias === 'BEAR') ||
                       (finalBias === 'BEAR' && fourHBias === 'BULL');
 
-  /* Rule 3 (NEW): 1H conflict with 4H → THIS IS THE 1H vs 4H DISAGREEMENT PROBLEM
-     When 1H BOS fires OPPOSITE to 4H trend, it is a PULLBACK signal within
-     the 4H move, NOT a reversal. Block it from generating a counter-direction trade.
-     The fix: if 1H opposes the finalBias AND 4H agrees with finalBias → hard block. */
   var oneHConflict = (finalBias === 'BULL' && oneHBias === 'BEAR') ||
                      (finalBias === 'BEAR' && oneHBias === 'BULL');
-  /* CRITICAL: if 4H agrees with macro but 1H opposes → 1H is a pullback, NOT a signal */
-  var oneHIsPullback = oneHConflict && !fourHConflict; /* 4H aligned, 1H pulling back */
-  var oneHIsReversal = oneHConflict && fourHConflict;  /* both 4H and 1H vs macro */
 
-  /* Strength: each agreeing TF adds weight */
+  var oneHIsPullback = oneHConflict && !fourHConflict;  
+  var oneHIsReversal = oneHConflict && fourHConflict;   
+
   var strength = 0;
   if (yearlyBias === finalBias) strength += 30;
   if (weeklyBias === finalBias) strength += 22;
   if (dailyBias  === finalBias) strength += 20;
   if (fourHBias  === finalBias) strength += 18;
-  if (oneHBias   === finalBias) strength += 10; /* 1H confirmation adds final 10pts */
+  if (oneHBias   === finalBias) strength += 10;  
   if (fourHConflict)  strength = Math.floor(strength * 0.55);
-  if (oneHIsPullback) strength = Math.floor(strength * 0.80); /* slight reduction — pullback mode */
-  if (oneHIsReversal) strength = Math.floor(strength * 0.40); /* heavy reduction — macro weakening */
+  if (oneHIsPullback) strength = Math.floor(strength * 0.80);  
+  if (oneHIsReversal) strength = Math.floor(strength * 0.40);  
   strength = Math.min(100, Math.max(0, strength));
 
-  /* ── 15m vs 1H intraday conflict (the final entry gate) ── */
   var m15Conflict  = (oneHBias==='BULL'&&m15Bias==='BEAR')||(oneHBias==='BEAR'&&m15Bias==='BULL');
   var m15Confirms  = (finalBias!=='NEUTRAL'&&m15Bias===finalBias);
-  var m15IsPullback= m15Conflict&&!oneHConflict; /* 1H aligned, 15m pulling back */
+  var m15IsPullback= m15Conflict&&!oneHConflict;  
 
-  /* Strength — 6-tier: add 15m confirmation (+5) */
   if(m15Confirms) strength=Math.min(100,strength+5);
   if(m15IsPullback) strength=Math.floor(strength*0.88);
 
@@ -1135,12 +1092,12 @@ function calcTopDownBias(cW, c1d, c4h, c1h, c15m, price) {
     dailyBias:     dailyBias,
     fourHBias:     fourHBias,
     oneHBias:      oneHBias,
-    m15Bias:       m15Bias,        /* NEW — 15m tier */
+    m15Bias:       m15Bias,         
     fourHConflict: fourHConflict,
     oneHConflict:  oneHConflict,
-    m15Conflict:   m15Conflict,    /* NEW — 1H vs 15m conflict */
-    m15IsPullback: m15IsPullback,  /* NEW — 15m pulling back inside 1H trend */
-    m15Confirms:   m15Confirms,    /* NEW — 15m confirms full cascade */
+    m15Conflict:   m15Conflict,     
+    m15IsPullback: m15IsPullback,   
+    m15Confirms:   m15Confirms,     
     oneHIsPullback:oneHIsPullback,
     oneHIsReversal:oneHIsReversal,
     bullCount:     bullCount,
@@ -1148,22 +1105,16 @@ function calcTopDownBias(cW, c1d, c4h, c1h, c15m, price) {
   };
 }
 
-// ═══════════════════════════════════════════════════════════
-//  STRICT MULTI-CONFLUENCE SIGNAL ENGINE
-//  8 factors scored 0-100, threshold = 60 to generate signal
-// ═══════════════════════════════════════════════════════════
 function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
   if (!candles4h.length || !candles1h.length || !candles15m.length) return null;
 
   var n4 = candles4h.length, n1 = candles1h.length, n15 = candles15m.length;
 
-  // ATR
   var atr4h = calcATR(candles4h, 14);
   var atr1h  = calcATR(candles1h, 14);
   var atr15  = calcATR(candles15m, 14);
   liveData.atr = {m15:atr15, h1:atr1h, h4:atr4h};
 
-  // Trends — use top-down engine results where available
   topDown = topDown || { bias:'NEUTRAL', strength:0, stack:[], yearlyBias:'NEUTRAL',
                          weeklyBias:'NEUTRAL', dailyBias:'NEUTRAL', fourHBias:'NEUTRAL',
                          oneHBias:'NEUTRAL', m15Bias:'NEUTRAL',
@@ -1177,47 +1128,39 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
               : (candles4h[n4-1].c > candles4h[Math.max(0,n4-60)].o ? 'BULL' : 'BEAR');
   var trend1h  = candles1h[n1-1].c > candles1h[Math.max(0,n1-24)].o ? 'BULL' : 'BEAR';
   var trend15  = candles15m[n15-1].c > candles15m[Math.max(0,n15-12)].o ? 'BULL' : 'BEAR';
-  var macroDir = topDown.bias; /* BULL | BEAR | NEUTRAL — the master gate */
+  var macroDir = topDown.bias;  
 
-  // BOS (strict 2-bar)
   var bos4h  = calcBOS(candles4h, 5, 10);
   var bos1h  = calcBOS(candles1h, 5, 10);
   var bos15  = calcBOS(candles15m, 5, 10);
 
-  // S/D zones
   var sd4h  = calcSDZones(candles4h, price, 30);
   var sd1h  = calcSDZones(candles1h, price, 30);
 
-  // Liquidity
   var liq4h = calcLiquidity(candles4h, price, 3);
   var liq1h  = calcLiquidity(candles1h, price, 3);
 
-  // Volume
   var avgVol4h = candles4h.slice(-20).reduce(function(s,c){return s+c.v;},0)/20;
   var volRatio4h = candles4h[n4-1].v / (avgVol4h || 1);
   var avgVol1h = candles1h.slice(-20).reduce(function(s,c){return s+c.v;},0)/20;
   var volRatio1h = candles1h[n1-1].v / (avgVol1h || 1);
 
-  // Candle patterns
   var pat4h = candlePattern(candles4h[n4-1]);
   var pat1h  = candlePattern(candles1h[n1-1]);
 
-  // USDT Dom
   var usdtFall = liveData.usdt_dom < liveData.usdt_dom_prev;
-  var usdtElevated = liveData.usdt_dom > 7.5; // above 7.5% = bearish pressure
+  var usdtElevated = liveData.usdt_dom > 7.5; 
 
-  // === SCORING ===
   var shortScore = 0, longScore = 0;
   var shortFactors = [], longFactors = [];
 
-  // Factor 1: TOP-DOWN CASCADE (Yearly→Weekly→Daily→4H→1H) — MASTER FACTOR
-  // Full 5-tier hierarchy. Macro dictates allowed direction.
-  // 1H conflict with 4H is now properly classified as pullback vs reversal.
+  
+
   var htfBear = macroDir === 'BEAR';
   var htfBull = macroDir === 'BULL';
   var tdStr   = topDown.strength || 0;
   var oneHB        = topDown.oneHBias    || 'NEUTRAL';
-  var m15B         = topDown.m15Bias     || 'NEUTRAL'; /* NEW — 15m bias */
+  var m15B         = topDown.m15Bias     || 'NEUTRAL';  
   var oneHPullback = topDown.oneHIsPullback || false;
   var m15Pullback  = topDown.m15IsPullback  || false;
   var m15Confirms  = topDown.m15Confirms    || false;
@@ -1229,20 +1172,20 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
     var macroScore = Math.round(25 + (tdStr/100)*10);
     shortScore += macroScore;
     shortFactors.push({label:'✅ BEAR cascade ['+tdLabel+'] str:'+tdStr+'%', score:macroScore, type:'key'});
-    // 1H confirms the SHORT → good entry signal
+
     if (oneHB === 'BEAR') {
       shortScore += 12;
       shortFactors.push({label:'1H also BEAR → cascade fully aligned (5/5 TFs)', score:12, type:'key'});
     }
-    // 1H BULL in BEAR cascade = active pullback phase. HARD BLOCK shorts until 1H confirms BEAR.
-    // SMC rule: Do NOT short while 1H is still bullish. Wait for 1H CHoCH/BOS to BEAR.
+
+    
     if (oneHB === 'BULL') {
-      // 1H actively opposes cascade → crush SHORT score below any threshold
+
       shortScore -= 30;
       shortFactors.push({label:'⛔ 1H is BULL — BEAR cascade pullback phase. NO SHORT until 1H breaks BEAR structure (CHoCH/BOS).', score:-30, type:'warn'});
       longFactors.push({label:'🚫 1H BULL in BEAR cascade = pullback bounce, not a reversal. Macro BEAR wins.', score:0, type:'warn'});
     }
-    // 15m adds final execution confirmation in BEAR cascade (only matters when 1H already BEAR)
+
     if (m15B === 'BEAR') {
       shortScore += 6;
       shortFactors.push({label:'15m also BEAR ✅ — full 6-TF cascade aligned (Yr→Wk→D→4H→1H→15m)', score:6, type:'key'});
@@ -1259,15 +1202,15 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
       longScore += 12;
       longFactors.push({label:'1H also BULL → cascade fully aligned (5/5 TFs)', score:12, type:'key'});
     }
-    // 1H BEAR in BULL cascade = active pullback phase. HARD BLOCK longs until 1H confirms BULL.
-    // SMC rule: Do NOT long while 1H is still bearish. Wait for 1H CHoCH/BOS to BULL.
+
+    
     if (oneHB === 'BEAR') {
-      // 1H actively opposes cascade → crush LONG score below any threshold
+
       longScore -= 30;
       longFactors.push({label:'⛔ 1H is BEAR — BULL cascade pullback phase. NO LONG until 1H breaks BULL structure (CHoCH/BOS).', score:-30, type:'warn'});
       shortFactors.push({label:'🚫 1H BEAR in BULL cascade = pullback dip, not a reversal. Macro BULL wins.', score:0, type:'warn'});
     }
-    // 15m gate in BULL cascade (only matters when 1H already BULL)
+
     if (m15B === 'BULL') {
       longScore += 6;
       longFactors.push({label:'15m also BULL ✅ — full 6-TF stack (Yr→Wk→D→4H→1H→15m)', score:6, type:'key'});
@@ -1277,16 +1220,16 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
       shortFactors.push({label:'🚫 15m BEAR in BULL cascade = micro-dip. Not a short signal.', score:0, type:'warn'});
     }
   } else {
-    // NEUTRAL macro — require BOTH 4H and 1H to agree for any trade
+
     var h4agrees = (topDown.fourHBias === 'BULL' || topDown.fourHBias === 'BEAR');
     var h1agrees = (oneHB !== 'NEUTRAL');
     var h4h1same = (topDown.fourHBias === oneHB);
     if (h4agrees && h1agrees && h4h1same) {
-      // 4H and 1H agree — allow trade with reduced confidence
+
       if (topDown.fourHBias === 'BULL') { longScore  += 10; longFactors.push({label:'Macro NEUTRAL but 4H+1H both BULL — limited long signal', score:10, type:'info'}); }
       if (topDown.fourHBias === 'BEAR') { shortScore += 10; shortFactors.push({label:'Macro NEUTRAL but 4H+1H both BEAR — limited short signal', score:10, type:'info'}); }
     } else if (h4agrees && h1agrees && !h4h1same) {
-      // 4H and 1H DISAGREE in neutral macro = maximum conflict = NO TRADE
+
       shortScore -= 20; longScore -= 20;
       shortFactors.push({label:'🚫 4H vs 1H DIRECT CONFLICT in neutral macro — NO TRADE. Wait for alignment.', score:-20, type:'warn'});
       longFactors.push({label:'🚫 4H vs 1H DIRECT CONFLICT in neutral macro — NO TRADE. Wait for alignment.', score:-20, type:'warn'});
@@ -1297,27 +1240,25 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
     }
   }
 
-  // 4H conflicts with Daily/Weekly (pullback inside larger trend) → reduce conviction
   if (topDown.fourHConflict) {
     shortScore -= 10; longScore -= 10;
     shortFactors.push({label:'4H counter-trend vs Daily/Weekly cascade', score:-10, type:'warn'});
     longFactors.push({label:'4H counter-trend vs Daily/Weekly cascade', score:-10, type:'warn'});
   }
-  // 1H pullback in macro trend → flag but don't block (wait for 1H to align)
+
   if (oneHPullback) {
     shortScore -= 8; longScore -= 8;
     shortFactors.push({label:'1H in pullback mode within macro trend — ideal entry zone approaching', score:-8, type:'warn'});
     longFactors.push({label:'1H in pullback mode within macro trend — ideal entry zone approaching', score:-8, type:'warn'});
   }
 
-  // Factor 2: Confirmed BOS — CASCADE-GATED
-  // Only BOS IN THE CASCADE DIRECTION scores positively.
-  // BOS against cascade = penalty (not a trade signal — it's a pullback leg).
+  
+
   if (bos4h.bear) {
     if (htfBear || macroDir === 'NEUTRAL') {
       shortScore += 22; shortFactors.push({label:'4H BOS Bear ✅ (confirmed, cascade-aligned)', score:22, type:'key'});
     } else {
-      // 4H BOS Bear in BULL cascade = temporary pullback low, NOT a short signal
+
       longScore  -= 5;  longFactors.push({label:'4H BOS Bear in BULL cascade = pullback. Watch for bounce long.', score:-5, type:'warn'});
       shortScore -= 12; shortFactors.push({label:'4H BOS Bear vs BULL cascade — counter-trend, disqualified', score:-12, type:'warn'});
     }
@@ -1330,14 +1271,14 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
       longScore  -= 12; longFactors.push({label:'4H BOS Bull vs BEAR cascade — counter-trend, disqualified', score:-12, type:'warn'});
     }
   }
-  // 1H BOS: ONLY scores if cascade agrees AND 4H agrees
-  // If 1H BOS opposes 4H trend → it's a 1H pullback leg, never a trade signal
+
+  
   if (bos1h.bear && !bos4h.bear) {
     if (htfBear && oneHB === 'BEAR') {
-      // 1H BOS Bear aligns with macro BEAR — entry confirmation
+
       shortScore += 14; shortFactors.push({label:'1H BOS Bear ✅ (cascade-aligned entry confirmation)', score:14, type:'key'});
     } else if (htfBull || (macroDir === 'NEUTRAL' && topDown.fourHBias === 'BULL')) {
-      // 1H BOS Bear in BULL context = THIS IS THE CONFLICT — explicitly label it
+
       longScore  -= 8;  longFactors.push({label:'1H BOS Bear — pullback in BULL trend. NOT a short signal. Potential long entry zone.', score:-8, type:'warn'});
       shortScore -= 18; shortFactors.push({label:'🚫 1H BOS Bear BLOCKED — 4H/macro is BULL. Taking this short = fighting cascade.', score:-18, type:'warn'});
     }
@@ -1351,20 +1292,19 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
     }
   }
 
-  // Factor 3: S/D Zone proximity — CASCADE-GATED
-  // Supply zone only scores SHORT if cascade allows it; demand zone only scores LONG
+  
   var nearSup = sd4h.sup.concat(sd1h.sup).filter(function(z){return z.dist < 2.0;});
   var nearDem = sd4h.dem.concat(sd1h.dem).filter(function(z){return z.dist < 2.0;});
   if (nearSup.length) {
     var best = nearSup.reduce(function(a,b){return a.str>b.str?a:b;});
     var pts = best.fresh ? 20 : 13;
     if (!htfBull) {
-      // Supply zone only relevant for shorts (not in macro BULL)
+
       shortScore += pts;
       shortFactors.push({label:'Near supply zone '+best.bot.toFixed(0)+'-'+best.top.toFixed(0)+' (str='+best.str+'%'+(best.fresh?' FRESH':'')+')', score:pts, type:'key'});
     } else {
-      // In macro BULL: supply zone = potential resistance, not a trade signal
-      shortScore += Math.round(pts * 0.3); // weak signal only
+
+      shortScore += Math.round(pts * 0.3); 
       shortFactors.push({label:'Supply zone in BULL cascade (pullback area, not short signal)', score:Math.round(pts*0.3), type:'warn'});
     }
   }
@@ -1372,23 +1312,22 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
     var bestD = nearDem.reduce(function(a,b){return a.str>b.str?a:b;});
     var ptsD = bestD.fresh ? 20 : 13;
     if (!htfBear) {
-      // Demand zone only relevant for longs (not in macro BEAR)
+
       longScore += ptsD;
       longFactors.push({label:'Near demand zone '+bestD.bot.toFixed(0)+'-'+bestD.top.toFixed(0)+' (str='+bestD.str+'%'+(bestD.fresh?' FRESH':'')+')', score:ptsD, type:'key'});
     } else {
-      // In macro BEAR: demand zone = potential support bounce, not a long signal
-      longScore += Math.round(ptsD * 0.3); // weak signal only
+
+      longScore += Math.round(ptsD * 0.3); 
       longFactors.push({label:'Demand zone in BEAR cascade (pullback area, not long signal)', score:Math.round(ptsD*0.3), type:'warn'});
     }
   }
 
-  // Factor 4: Liquidity (BSL/SSL as targets — confirms direction)
   var bslNear = liq4h.bsl.concat(liq1h.bsl).filter(function(x){return (x-price)/price*100 < 3.5;});
   var sslNear = liq4h.ssl.concat(liq1h.ssl).filter(function(x){return (price-x)/price*100 < 3.5;});
   if (bslNear.length) {
-    // BSL above = liquidity target for shorts (shorts sweep liq then reverse)
+
     shortScore += 8; shortFactors.push({label:'BSL $'+bslNear[0]+' near above (sweep then short)', score:8, type:'info'});
-    // BSL above = potential stop-hunt for longs (risky for long entry)
+
     longScore  -= 5; longFactors.push({label:'BSL $'+bslNear[0]+' above — longs may be stop-hunted', score:-5, type:'warn'});
   }
   if (sslNear.length) {
@@ -1397,38 +1336,36 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
     shortScore -= 5; shortFactors.push({label:'SSL $'+sslNear[0]+' below — shorts may be stop-hunted', score:-5, type:'warn'});
   }
 
-  // Factor 5: USDT Dominance — CASCADE-GATED
-  // Only score in direction that matches cascade; contra-direction gets reduced score
+  
   if (usdtElevated && !usdtFall) {
     shortScore += 10; shortFactors.push({label:'USDT Dom '+liveData.usdt_dom.toFixed(2)+'% (elevated, bearish for ETH)', score:10, type:'info'});
-    if (!htfBear) { // In bull cascade, still penalise long slightly
+    if (!htfBear) { 
       longScore -= 5; longFactors.push({label:'USDT Dom elevated — mild headwind for ETH longs', score:-5, type:'warn'});
     }
   } else if (usdtFall) {
-    if (!htfBear) { // USDT falling = bullish ETH, only meaningful in bull/neutral cascade
+    if (!htfBear) { 
       longScore += 8; longFactors.push({label:'USDT Dom falling (ETH bullish)', score:8, type:'info'});
-    } else { // In bear cascade, falling USDT is just a temporary reprieve
+    } else { 
       longScore += 3; longFactors.push({label:'USDT Dom falling (partial bull signal, but macro BEAR overrides)', score:3, type:'warn'});
     }
   }
 
-  // Factor 6: Candle pattern confirmation — CASCADE + 1H CONFLICT GATED
-  // Candle patterns only score full weight when 1H agrees with cascade direction.
-  // When 1H actively conflicts, candles carry zero signal weight (they reflect the pullback, not the trade).
+  
+
   var bearPatterns = ['Shooting Star','Strong Bear'];
   var bullPatterns = ['Hammer','Strong Bull'];
-  var h1AgreesBear = (oneHB === 'BEAR');   /* 1H confirmed bearish → bear patterns meaningful */
-  var h1AgreesBull = (oneHB === 'BULL');   /* 1H confirmed bullish → bull patterns meaningful */
+  var h1AgreesBear = (oneHB === 'BEAR');    
+  var h1AgreesBull = (oneHB === 'BULL');    
   if (bearPatterns.indexOf(pat4h) > -1 || bearPatterns.indexOf(pat1h) > -1) {
     var best_pat = bearPatterns.indexOf(pat4h)>-1 ? '4H '+pat4h : '1H '+pat1h;
     if (htfBear && h1AgreesBear) {
-      // Full weight: BEAR cascade + 1H BEAR + bearish candle = high-quality entry
+
       shortScore += 12; shortFactors.push({label:'Bearish trigger: '+best_pat+' (cascade+1H aligned)', score:12, type:'key'});
     } else if (!htfBull) {
-      // Partial: cascade neutral or bear but 1H not yet confirmed
+
       shortScore += 5; shortFactors.push({label:'Bearish candle: '+best_pat+' (wait for 1H BOS BEAR to confirm)', score:5, type:'warn'});
     } else {
-      // Counter-cascade: bearish candle in BULL macro = noise
+
       shortScore += 2; shortFactors.push({label:'Bearish candle in BULL cascade — noise, not a signal', score:2, type:'warn'});
     }
   } else if (pat4h.indexOf('Doji') > -1 || pat1h.indexOf('Doji') > -1) {
@@ -1440,26 +1377,24 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
   if (bullPatterns.indexOf(pat4h) > -1 || bullPatterns.indexOf(pat1h) > -1) {
     var best_patB = bullPatterns.indexOf(pat4h)>-1 ? '4H '+pat4h : '1H '+pat1h;
     if (htfBull && h1AgreesBull) {
-      // Full weight: BULL cascade + 1H BULL + bullish candle = high-quality entry
+
       longScore  += 12; longFactors.push({label:'Bullish trigger: '+best_patB+' (cascade+1H aligned)', score:12, type:'key'});
     } else if (!htfBear) {
-      // Partial: cascade neutral or bull but 1H not yet confirmed
+
       longScore  += 5; longFactors.push({label:'Bullish candle: '+best_patB+' (wait for 1H BOS BULL to confirm)', score:5, type:'warn'});
     } else {
-      // Counter-cascade: bullish candle in BEAR macro = pullback noise
+
       longScore  += 2; longFactors.push({label:'Bullish candle in BEAR cascade — pullback noise, not a long signal', score:2, type:'warn'});
     }
   } else if (bullPatterns.indexOf(pat4h) === -1 && bullPatterns.indexOf(pat1h) === -1) {
     longScore  -= 5; longFactors.push({label:'No bullish trigger candle ('+pat4h+')', score:-5, type:'warn'});
   }
 
-  // Factor 7: Volume (require >1.0x for confirmation, >1.5x strong)
   if (volRatio4h > 1.5) { shortScore += 10; longScore += 10; shortFactors.push({label:'4H volume spike '+volRatio4h.toFixed(1)+'x avg', score:10, type:'key'}); longFactors.push({label:'4H volume spike '+volRatio4h.toFixed(1)+'x avg', score:10, type:'key'}); }
   else if (volRatio4h > 1.0) { shortScore += 5; longScore += 5; }
   else { shortScore -= 5; longScore -= 5; shortFactors.push({label:'Low volume '+volRatio4h.toFixed(2)+'x (weak conviction)', score:-5, type:'warn'}); longFactors.push({label:'Low volume '+volRatio4h.toFixed(2)+'x (weak conviction)', score:-5, type:'warn'}); }
 
-  // Factor 8: Full 5-TF stack alignment bonus
-  /* allBear5/allBull5: full 6-TF perfect stack (uses m15B from cascade, not raw trend15) */
+   
   var allBear5 = (topDown.yearlyBias==='BEAR'||topDown.yearlyBias==='NEUTRAL') &&
                  topDown.weeklyBias==='BEAR' && topDown.dailyBias==='BEAR' &&
                  topDown.fourHBias==='BEAR' && oneHB==='BEAR' && m15B==='BEAR';
@@ -1482,49 +1417,47 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
     longScore  += 10; longFactors.push({label:'4H+1H both BULL — intraday cascade confirmed', score:10, type:'info'});
   }
 
-  // Factor 8b: 4H vs 1H conflict — penalise ONLY the counter-cascade direction
-  // When macro=BEAR + 4H=BEAR + 1H=BULL: the LONG is the counter-direction, crush it.
-  // The SHORT is the cascade direction — it was already crushed in Factor 1 (oneHB=BULL → -30).
-  // When macro=BULL + 4H=BULL + 1H=BEAR: the SHORT is counter-direction, crush it.
+  
+
+  
   if (h4_1h_conflict) {
     if (topDown.fourHBias === 'BEAR') {
-      // 4H BEAR + 1H BULL: LONG is counter-cascade → block it hard
+
       longScore -= 30;
       longFactors.push({label:'⛔ 4H BEAR + 1H BULL CONFLICT: 1H rally is a pullback inside 4H downtrend. NO LONG. Wait for 1H→BEAR BOS.', score:-30, type:'warn'});
-      // Note: SHORT was already penalised -30 in Factor 1 (oneHB=BULL in BEAR cascade)
-      // Don't double-penalise the cascade direction — we WANT shorts once 1H turns BEAR
+
+      
     } else {
-      // 4H BULL + 1H BEAR: SHORT is counter-cascade → block it hard
+
       shortScore -= 30;
       shortFactors.push({label:'⛔ 4H BULL + 1H BEAR CONFLICT: 1H dip is a pullback inside 4H uptrend. NO SHORT. Wait for 1H→BULL BOS.', score:-30, type:'warn'});
-      // Note: LONG was already penalised -30 in Factor 1 (oneHB=BEAR in BULL cascade)
+
     }
   }
 
-  // ═══════════════════════════════════════════════════════════
-  // POST-SCORING CASCADE CAP — THE DEFINITIVE FIX
-  // This runs AFTER all factors have scored.
-  // Even if Factors 3-8 accumulated points for the wrong direction,
-  // the cascade cap prevents a counter-cascade signal from firing.
-  // ═══════════════════════════════════════════════════════════
+  
+
+  
+
+  
 
   if (htfBear && tdStr >= 40) {
-    // Strong BEAR cascade: long score hard-capped below threshold
-    // No matter how many bullish factors fired, longs are disallowed
-    var longCap = Math.max(0, Math.round(44 - (tdStr - 40) * 0.3)); // 44→32 as strength rises
+
+    
+    var longCap = Math.max(0, Math.round(44 - (tdStr - 40) * 0.3)); 
     if (longScore > longCap) {
       longFactors.push({label:'🚫 LONG score capped at '+longCap+' by BEAR cascade (strength '+tdStr+'%). 1H bullish moves are pullbacks — not trade signals.', score:-(longScore-longCap), type:'warn'});
       longScore = longCap;
     }
   } else if (htfBull && tdStr >= 40) {
-    // Strong BULL cascade: short score hard-capped below threshold
+
     var shortCap = Math.max(0, Math.round(44 - (tdStr - 40) * 0.3));
     if (shortScore > shortCap) {
       shortFactors.push({label:'🚫 SHORT score capped at '+shortCap+' by BULL cascade (strength '+tdStr+'%). 1H bearish moves are pullbacks — not trade signals.', score:-(shortScore-shortCap), type:'warn'});
       shortScore = shortCap;
     }
   } else if (htfBear && tdStr >= 20) {
-    // Moderate BEAR cascade: allow counter signals only if very strong (>75pts)
+
     if (longScore > 55) {
       longScore = 55;
       longFactors.push({label:'⚠️ LONG score limited to 55 — moderate BEAR cascade. Requires very strong confirmation.', score:0, type:'warn'});
@@ -1536,42 +1469,41 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
     }
   }
 
-  // ── POST-SCORING 1H CONFLICT HARD BLOCK ──────────────────────────────────────────────────
-  // This is the definitive gate. Even if factors 2-8 accumulated enough points, if 1H is
-  // actively opposing the cascade direction, NO TRADE fires in any direction.
-  //
-  // Rule: 1H must confirm the cascade direction before ANY trade is valid.
-  //   • BEAR cascade + 1H BULL → WAIT. Neither short (not yet confirmed) nor long (counter).
-  //   • BULL cascade + 1H BEAR → WAIT. Neither long (not yet confirmed) nor short (counter).
-  //   Exception: if macroDir is NEUTRAL and 4H+1H both agree, allow reduced trades.
-  // ──────────────────────────────────────────────────────────────────────────────────────────
+  
+
+  
+
+  
+
+  
+
   var active1HConflict = (topDown.oneHConflict || topDown.h4h1Clash ||
     (topDown.fourHBias==='BEAR' && topDown.oneHBias==='BULL') ||
     (topDown.fourHBias==='BULL' && topDown.oneHBias==='BEAR'));
 
   if (active1HConflict && macroDir !== 'NEUTRAL') {
-    // Cascade-aligned direction: cap hard below threshold — not ready yet
-    // Counter-cascade direction: already crushed by Factor 1 (-30) + post-cap, but enforce here too
+
+    
     if (topDown.fourHBias === 'BEAR') {
-      // 4H BEAR + 1H BULL
-      // Shorts: 1H pullback = wait for 1H BOS BEAR before executing. Cap below threshold.
+
+      
       if (shortScore >= 55) {
         shortScore = Math.min(shortScore, 54);
         shortFactors.push({label:'⏳ SHORT WAITING: 1H is still BULL (pullback). Score capped until 1H breaks structure BEAR.', score:0, type:'warn'});
       }
-      // Longs: already crushed by Factor 1 (-30) and cascade cap. Enforce 44 max.
+
       if (longScore > 44) {
         longScore = 44;
         longFactors.push({label:'⛔ LONG hard-blocked: 4H BEAR + 1H BULL = pullback bounce, not reversal.', score:0, type:'warn'});
       }
     } else {
-      // 4H BULL + 1H BEAR
-      // Longs: 1H pullback = wait for 1H BOS BULL before executing. Cap below threshold.
+
+      
       if (longScore >= 55) {
         longScore = Math.min(longScore, 54);
         longFactors.push({label:'⏳ LONG WAITING: 1H is still BEAR (pullback). Score capped until 1H breaks structure BULL.', score:0, type:'warn'});
       }
-      // Shorts: already crushed by Factor 1 (-30) and cascade cap. Enforce 44 max.
+
       if (shortScore > 44) {
         shortScore = 44;
         shortFactors.push({label:'⛔ SHORT hard-blocked: 4H BULL + 1H BEAR = pullback dip, not reversal.', score:0, type:'warn'});
@@ -1579,14 +1511,13 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
     }
   }
 
-  // 15m vs 1H conflict: finest entry gate (only relevant when 1H already agrees with cascade)
-  // If 1H agrees with cascade BUT 15m still opposes → micro pullback — hold for 15m BOS
+  
   if (!active1HConflict && (topDown.m15Conflict ||
       (topDown.oneHBias==='BULL' && topDown.m15Bias==='BEAR') ||
       (topDown.oneHBias==='BEAR' && topDown.m15Bias==='BULL'))) {
     var m15ConflictDir = topDown.oneHBias==='BULL' ? 'long' : 'short';
     if (m15ConflictDir === 'long' && longScore >= 60) {
-      longScore = Math.min(longScore, 58); /* allow near-threshold but not trigger */
+      longScore = Math.min(longScore, 58);  
       longFactors.push({label:'⚠️ 15m is BEAR in 1H BULL trend — micro pullback. Wait for 15m BOS BULL before executing.', score:0, type:'warn'});
     } else if (m15ConflictDir === 'short' && shortScore >= 60) {
       shortScore = Math.min(shortScore, 58);
@@ -1594,18 +1525,16 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
     }
   }
 
-  // Cap scores
   shortScore = Math.max(0, Math.min(100, shortScore));
   longScore  = Math.max(0, Math.min(100, longScore));
 
-  // === DECISION (threshold = 60) ===
   var THRESHOLD = 60;
   var direction = 'NEUTRAL';
-  // Standard direction: needs threshold + 5pt gap
-  // With cascade cap in place, counter-cascade direction can't reach threshold anyway
+
+  
   if (shortScore >= THRESHOLD && shortScore > longScore + 5) direction = 'SHORT';
   else if (longScore >= THRESHOLD && longScore > shortScore + 5) direction = 'LONG';
-  // Safety: if cascade is strong but direction still shows counter-cascade, override
+
   if (direction === 'LONG' && htfBear && tdStr >= 40) {
     direction = 'NEUTRAL';
     longFactors.push({label:'🚫 LONG overridden — BEAR cascade '+tdStr+'% ['+tdLabel+']. Signal suppressed.', score:0, type:'warn'});
@@ -1614,7 +1543,7 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
     direction = 'NEUTRAL';
     shortFactors.push({label:'🚫 SHORT overridden — BULL cascade '+tdStr+'% ['+tdLabel+']. Signal suppressed.', score:0, type:'warn'});
   }
-  /* 15m final gate: even if direction fires, if 15m directly opposes cascade → NEUTRAL */
+
   if (direction === 'LONG' && m15B === 'BEAR' && (htfBear || topDown.fourHBias==='BEAR')) {
     direction = 'NEUTRAL';
     longFactors.push({label:'⛔ LONG suppressed: 15m is BEAR opposing BEAR cascade. Wait for 15m BOS BULL before executing.', score:0, type:'warn'});
@@ -1624,11 +1553,10 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
     shortFactors.push({label:'⛔ SHORT suppressed: 15m is BULL opposing BULL cascade. Wait for 15m BOS BEAR before executing.', score:0, type:'warn'});
   }
 
-  // === ATR-BASED LEVELS ===
   var levels = null;
   if (direction === 'SHORT') {
     var entry = price;
-    // Find nearest supply zone for smarter entry
+
     if (nearSup.length) entry = (nearSup[0].bot + nearSup[0].top) / 2;
     levels = {
       entry: Math.round(entry * 100)/100,
@@ -1680,22 +1608,20 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
       usdtDom: liveData.usdt_dom, usdtFall: usdtFall,
       pat4h: pat4h, pat1h: pat1h,
       htfBear: htfBear, htfBull: htfBull,
-      oneHBias: topDown.oneHBias||'NEUTRAL',      /* 1H cascade bias */
-      oneHConflict: topDown.oneHConflict||false,  /* 4H vs 1H conflict flag */
+      oneHBias: topDown.oneHBias||'NEUTRAL',       
+      oneHConflict: topDown.oneHConflict||false,   
       oneHIsPullback: topDown.oneHIsPullback||false,
-      topDown: topDown, /* full cascade result */
+      topDown: topDown,  
       allBear: allBear5, allBull: allBull5
     }
   };
 }
 
-// ── Render signal panels ──
 function renderSignalPanels(result) {
   if (!result) return;
   var dir = result.direction;
   var ctx = result.context;
 
-  // Update all 3 plan panels with live analysis context
   updateScalpPanel(result);
   updateIntradayPanel(result);
   updateSwingPanel(result);
@@ -1721,7 +1647,7 @@ function updateScalpPanel(result) {
   var ctx = result.context;
   var atr15 = result.context.atr15 || liveData.atr.m15;
   var p = result.price;
-  // Scalp uses 15m + 1H ATR
+
   var nearSup = result.context.sd1h.sup.filter(function(z){return z.dist<2;});
   var nearDem = result.context.sd1h.dem.filter(function(z){return z.dist<2;});
 
@@ -1761,7 +1687,6 @@ function updateScalpPanel(result) {
     })()
     +'</div>';
 
-  // Update structure bars
   var sb = document.getElementById('scalp-struct');
   if (sb) {
     var tMap = {'BULL':['bull','70%','Bullish'],'BEAR':['bear','70%','Bearish']};
@@ -1791,7 +1716,6 @@ function updateIntradayPanel(result) {
   var dir = result.direction;
   var p = result.price;
 
-  // Update confluence analysis card
   var el = document.getElementById('intra-cf');
   if (!el) return;
 
@@ -1809,7 +1733,6 @@ function updateIntradayPanel(result) {
     +'</div>'
     + factorRows(factors);
 
-  // Update context alert with top-down cascade waterfall
   var ctxEl = document.getElementById('intra-context');
   if (ctxEl) {
     var td = ctx.topDown || {};
@@ -1897,10 +1820,9 @@ function updateIntradayPanel(result) {
       +'</div>';
   }
 
-  // Update levels with live data
   if (result.levels) {
     var lv = result.levels;
-    if(!lv||!isFinite(lv.entry)||!isFinite(lv.sl))return; /* guard against NaN levels */
+    if(!lv||!isFinite(lv.entry)||!isFinite(lv.sl))return;  
     var pfx = dir==='SHORT'?'–':'+';
     updateLevelEl('intra-entry', '$'+lv.entry.toFixed(2));
     updateLevelEl('intra-sl',    '$'+lv.sl.toFixed(2)+'  ('+pfx+lv.slPct+'%)');
@@ -1915,11 +1837,10 @@ function updateIntradayPanel(result) {
 function updateSwingPanel(result) {
   var ctx = result.context;
   var p = result.price;
-  // Update Elliott wave price ladder
+
   var priceEl = document.getElementById('swing-curr-price');
   if (priceEl) priceEl.textContent = (p>0)?'$'+p.toFixed(2):'$—';
 
-  // Update swing top-down context if element exists
   var swCtx = document.getElementById('swing-td-context');
   if (swCtx && ctx.topDown) {
     var td = ctx.topDown;
@@ -1951,12 +1872,11 @@ function updateLevelEl(id, val) {
   if (el) el.textContent = val;
 }
 
-// ── RISK CALCULATOR (per-tab) ──
 function calcRisk(type) {
-  /* Use live ATR if available, else safe fallbacks (prevents $0.00 levels on first load) */
-  var _p=Math.max(liveData.price||1634, 100); /* never 0 */
-  var _a15=liveData.atr.m15||Math.max(8,_p*0.004);   /* ~0.4% fallback */
-  var _a4h=liveData.atr.h4 ||Math.max(30,_p*0.018);  /* ~1.8% fallback */
+
+  var _p=Math.max(liveData.price||1634, 100);  
+  var _a15=liveData.atr.m15||Math.max(8,_p*0.004);    
+  var _a4h=liveData.atr.h4 ||Math.max(30,_p*0.018);   
   var cfgs = {
     's': {capId:'sCapital',riskId:'sRisk',entry:_p,sl_dist:_a15*0.8,tp1_dist:_a15*1.2,tp2_dist:_a15*2.0,tp1c:.60,tp2c:.30,holds:.5,rAmt:'sRiskAmt',posETH:'sPosETH',tp1P:'sTP1P',tp2P:'sTP2P',fees:'sFees',net:'sNetP'},
     'i': {capId:'iCapital',riskId:'iRisk',entry:_p,sl_dist:_a4h*1.3,tp1_dist:_a4h*1.5,tp2_dist:_a4h*2.8,tp1c:.40,tp2c:.35,holds:8,rAmt:'iRiskAmt',posETH:'iPosETH',tp1P:'iTP1P',tp2P:'iTP2P',fees:'iFees',fundId:'iFund',net:'iNetP'},
@@ -1983,7 +1903,6 @@ function calcRisk(type) {
   if(ne){ne.textContent=(net>=0?'+':'')+f(net);ne.className='rcv '+(net>=0?'gold':'r');}
 }
 
-// ── Show plan tab ──
 function showPlan(style) {
   document.querySelectorAll('.stab').forEach(function(t){ t.classList.remove('active'); });
   document.querySelectorAll('.plan-panel').forEach(function(p){ p.classList.remove('active'); });
@@ -1991,41 +1910,40 @@ function showPlan(style) {
   var panelEl = document.getElementById('panel-'+style);
   if (tabEl) tabEl.classList.add('active');
   if (panelEl) panelEl.classList.add('active');
-  /* Scroll panel to top on switch */
+
   if (panelEl) panelEl.scrollTop = 0;
 }
 
-// ── Checklist toggle ──
 function chk(el) {
   el.classList.toggle('done');
   el.textContent = el.classList.contains('done') ? '✓' : '';
 }
 
-// ── MAIN INIT ──
 var _analysisRunning = false;
 function runFullAnalysis() {
   if (_analysisRunning) return;
   _analysisRunning = true;
   var statusEl = document.getElementById('analysis-status');
   if (statusEl) { statusEl.textContent = '⏳ Fetching live data…'; statusEl.style.color='var(--warn)'; }
-  /* Show loading overlay only on first load */
+
   if (!liveData.price) {
     var ov = document.getElementById('load-overlay');
     if (ov) {
       ov.classList.add('show');
-      /* Auto-dismiss after 7s to prevent blocking interaction */
+
       setTimeout(function(){ ov.classList.remove('show'); }, 7000);
     }
   }
 
+  _lbSet(15);
   Promise.all([
     fetchTicker(),
-    fetchCandles('1w', 52),   /* [1] Weekly  — 52 candles = ~1 year */
-    fetchCandles('1d', 90),   /* [2] Daily   — 90 days */
-    fetchCandles('4h', 120),  /* [3] 4H      — 120 candles */
-    fetchCandles('1h', 120),  /* [4] 1H      — 120 candles */
-    fetchCandles('15m', 100), /* [5] 15m */
-    fetchUSDTDom()            /* [6] */
+    fetchCandles('1w', 52),    
+    fetchCandles('1d', 90),    
+    fetchCandles('4h', 120),   
+    fetchCandles('1h', 120),   
+    fetchCandles('15m', 100),  
+    fetchUSDTDom()             
   ]).then(function(results) {
     var cW  = results[1] || [];
     var c1d = results[2] || [];
@@ -2035,15 +1953,13 @@ function runFullAnalysis() {
     var p = liveData.price;
     if (!p || !c4h.length) { _analysisRunning=false; if(statusEl){statusEl.textContent='⚠️ No data — retrying…';statusEl.style.color='var(--red)';} setTimeout(runFullAnalysis,5000); return; }
 
-    // Sync live price to last candle on all intraday TFs
     function syncPrice(c) { if(!c.length) return; var l=c[c.length-1]; l.c=p; if(p>l.h)l.h=p; if(p<l.l)l.l=p; }
     syncPrice(c4h); syncPrice(c1h); syncPrice(c15);
 
     liveData.candles = {w1:cW, d1:c1d, h4:c4h, h1:c1h, m15:c15};
     liveData.atr.d1 = calcATR(c1d, 14);
 
-    /* ── STEP 1: Top-down bias from macro TFs ── */
-    var tdResult = calcTopDownBias(cW, c1d, c4h, c1h, c15, p); /* 6-tier: Yr→Wk→D→4H→1H→15m */
+    var tdResult = calcTopDownBias(cW, c1d, c4h, c1h, c15, p);  
     liveData.topDownBias      = tdResult.bias;
     liveData.topDownStrength  = tdResult.strength;
     liveData.topDownStack     = tdResult.stack;
@@ -2061,6 +1977,7 @@ function runFullAnalysis() {
     var ov = document.getElementById('load-overlay');
     if (ov) ov.classList.remove('show');
     if(result) renderSignalPanels(result);
+    _lbSet(95);setTimeout(_lbDone,200);
     calcRisk('s'); calcRisk('i'); calcRisk('sw');
 
     if (statusEl) {
@@ -2075,6 +1992,7 @@ function runFullAnalysis() {
     _analysisRunning = false;
     var ov2 = document.getElementById('load-overlay');
     if (ov2) ov2.classList.remove('show');
+    _lbSet(100);setTimeout(_lbDone,400);
     if (statusEl) { statusEl.textContent = '⚠️ API error — will retry in 60s. Check network.'; statusEl.style.color='var(--red)'; }
   });
 }
@@ -2083,7 +2001,7 @@ function init() {
   var now=new Date();
   var ist=now.toLocaleString('en-IN',{timeZone:'Asia/Kolkata',dateStyle:'medium',timeStyle:'short'});
   var gt=document.getElementById('genTime'); if(gt)gt.textContent=ist+' IST';
-  /* Start analysis — show timeout warning if API is slow */
+
   var _initTimeout=setTimeout(function(){
     var st=document.getElementById('analysis-status');
     if(st&&st.textContent.indexOf('⏳')>=0){
@@ -2097,13 +2015,13 @@ function init() {
     var c4=liveData.candles.h4, c1=liveData.candles.h1, c15=liveData.candles.m15;
     var p=liveData.price;
     if(p>0 && c4 && c4.length && c1 && c15 && c15.length){
-      /* Sync live price to last candle */
+
       c4[c4.length-1].c=p;
       if(p>c4[c4.length-1].h)c4[c4.length-1].h=p;
       if(p<c4[c4.length-1].l)c4[c4.length-1].l=p;
       if(liveData.analysis){
         try{
-          /* Reconstruct topDown from stored liveData for tick refresh */
+
           var _stack=liveData.topDownStack||[];
           var _td=liveData.topDownBias!=='NEUTRAL'?{
             bias:liveData.topDownBias,
