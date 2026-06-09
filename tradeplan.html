@@ -1190,9 +1190,7 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
       shortScore += 12;
       shortFactors.push({label:'1H also BEAR → cascade fully aligned (5/5 TFs)', score:12, type:'key'});
     }
-    // HARD BLOCK: counter-trend long in BEAR cascade
-    longScore = Math.floor(longScore * 0.20);
-    longFactors.push({label:'🚫 MACRO BEAR — longs blocked by cascade. Only SHORTS allowed.', score:0, type:'warn'});
+    // Counter-cascade longs tracked via htfBear flag — post-scoring cap applied at end
     // 1H BULL in BEAR cascade = pullback bounce, NOT a long signal
     if (oneHB === 'BULL') {
       shortScore -= 5; // 1H bounce means entry may be sub-optimal for short
@@ -1207,9 +1205,7 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
       longScore += 12;
       longFactors.push({label:'1H also BULL → cascade fully aligned (5/5 TFs)', score:12, type:'key'});
     }
-    // HARD BLOCK: counter-trend short in BULL cascade
-    shortScore = Math.floor(shortScore * 0.20);
-    shortFactors.push({label:'🚫 MACRO BULL — shorts blocked by cascade. Only LONGS allowed.', score:0, type:'warn'});
+    // Counter-cascade shorts tracked via htfBull flag — post-scoring cap applied at end
     if (oneHB === 'BEAR') {
       longScore -= 5;
       longFactors.push({label:'⚠️ 1H is BEAR (pullback in BULL trend). Wait for 1H to turn BULL before longing.', score:-5, type:'warn'});
@@ -1290,20 +1286,35 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
     }
   }
 
-  // Factor 3: S/D Zone proximity (price at or inside zone, fresh preferred)
+  // Factor 3: S/D Zone proximity — CASCADE-GATED
+  // Supply zone only scores SHORT if cascade allows it; demand zone only scores LONG
   var nearSup = sd4h.sup.concat(sd1h.sup).filter(function(z){return z.dist < 2.0;});
   var nearDem = sd4h.dem.concat(sd1h.dem).filter(function(z){return z.dist < 2.0;});
   if (nearSup.length) {
     var best = nearSup.reduce(function(a,b){return a.str>b.str?a:b;});
     var pts = best.fresh ? 20 : 13;
-    shortScore += pts;
-    shortFactors.push({label:'Near supply zone '+best.bot.toFixed(0)+'-'+best.top.toFixed(0)+' (str='+best.str+'%'+(best.fresh?' FRESH':'')+')', score:pts, type:'key'});
+    if (!htfBull) {
+      // Supply zone only relevant for shorts (not in macro BULL)
+      shortScore += pts;
+      shortFactors.push({label:'Near supply zone '+best.bot.toFixed(0)+'-'+best.top.toFixed(0)+' (str='+best.str+'%'+(best.fresh?' FRESH':'')+')', score:pts, type:'key'});
+    } else {
+      // In macro BULL: supply zone = potential resistance, not a trade signal
+      shortScore += Math.round(pts * 0.3); // weak signal only
+      shortFactors.push({label:'Supply zone in BULL cascade (pullback area, not short signal)', score:Math.round(pts*0.3), type:'warn'});
+    }
   }
   if (nearDem.length) {
     var bestD = nearDem.reduce(function(a,b){return a.str>b.str?a:b;});
     var ptsD = bestD.fresh ? 20 : 13;
-    longScore += ptsD;
-    longFactors.push({label:'Near demand zone '+bestD.bot.toFixed(0)+'-'+bestD.top.toFixed(0)+' (str='+bestD.str+'%'+(bestD.fresh?' FRESH':'')+')', score:ptsD, type:'key'});
+    if (!htfBear) {
+      // Demand zone only relevant for longs (not in macro BEAR)
+      longScore += ptsD;
+      longFactors.push({label:'Near demand zone '+bestD.bot.toFixed(0)+'-'+bestD.top.toFixed(0)+' (str='+bestD.str+'%'+(bestD.fresh?' FRESH':'')+')', score:ptsD, type:'key'});
+    } else {
+      // In macro BEAR: demand zone = potential support bounce, not a long signal
+      longScore += Math.round(ptsD * 0.3); // weak signal only
+      longFactors.push({label:'Demand zone in BEAR cascade (pullback area, not long signal)', score:Math.round(ptsD*0.3), type:'warn'});
+    }
   }
 
   // Factor 4: Liquidity (BSL/SSL as targets — confirms direction)
@@ -1321,10 +1332,20 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
     shortScore -= 5; shortFactors.push({label:'SSL $'+sslNear[0]+' below — shorts may be stop-hunted', score:-5, type:'warn'});
   }
 
-  // Factor 5: USDT Dominance
-  if (usdtElevated && !usdtFall) { shortScore += 10; shortFactors.push({label:'USDT Dom '+liveData.usdt_dom.toFixed(2)+'% (elevated, not falling)', score:10, type:'info'}); }
-  else if (usdtFall) { longScore  += 8;  longFactors.push({label:'USDT Dom falling (ETH bullish signal)', score:8, type:'info'}); }
-  if (usdtElevated) { longScore -= 5; longFactors.push({label:'USDT Dom >7.5% (bearish pressure on ETH)', score:-5, type:'warn'}); }
+  // Factor 5: USDT Dominance — CASCADE-GATED
+  // Only score in direction that matches cascade; contra-direction gets reduced score
+  if (usdtElevated && !usdtFall) {
+    shortScore += 10; shortFactors.push({label:'USDT Dom '+liveData.usdt_dom.toFixed(2)+'% (elevated, bearish for ETH)', score:10, type:'info'});
+    if (!htfBear) { // In bull cascade, still penalise long slightly
+      longScore -= 5; longFactors.push({label:'USDT Dom elevated — mild headwind for ETH longs', score:-5, type:'warn'});
+    }
+  } else if (usdtFall) {
+    if (!htfBear) { // USDT falling = bullish ETH, only meaningful in bull/neutral cascade
+      longScore += 8; longFactors.push({label:'USDT Dom falling (ETH bullish)', score:8, type:'info'});
+    } else { // In bear cascade, falling USDT is just a temporary reprieve
+      longScore += 3; longFactors.push({label:'USDT Dom falling (partial bull signal, but macro BEAR overrides)', score:3, type:'warn'});
+    }
+  }
 
   // Factor 6: Candle pattern confirmation (STRICT — must align with direction)
   var bearPatterns = ['Shooting Star','Strong Bear'];
@@ -1340,7 +1361,11 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
   }
   if (bullPatterns.indexOf(pat4h) > -1 || bullPatterns.indexOf(pat1h) > -1) {
     var best_patB = bullPatterns.indexOf(pat4h)>-1 ? '4H '+pat4h : '1H '+pat1h;
-    longScore  += 12; longFactors.push({label:'Bullish trigger: '+best_patB, score:12, type:'key'});
+    if (!htfBear) {
+      longScore  += 12; longFactors.push({label:'Bullish trigger: '+best_patB, score:12, type:'key'});
+    } else {
+      longScore  += 4; longFactors.push({label:'Bullish candle in BEAR cascade — pullback signal only', score:4, type:'warn'});
+    }
   } else if (bullPatterns.indexOf(pat4h) === -1 && bullPatterns.indexOf(pat1h) === -1) {
     longScore  -= 5; longFactors.push({label:'No bullish trigger candle ('+pat4h+')', score:-5, type:'warn'});
   }
@@ -1384,6 +1409,56 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
     longFactors.push({label:'⛔ '+conflictDir+' CONFLICT: '+resolution, score:-20, type:'warn'});
   }
 
+  // ═══════════════════════════════════════════════════════════
+  // POST-SCORING CASCADE CAP — THE DEFINITIVE FIX
+  // This runs AFTER all factors have scored.
+  // Even if Factors 3-8 accumulated points for the wrong direction,
+  // the cascade cap prevents a counter-cascade signal from firing.
+  // ═══════════════════════════════════════════════════════════
+
+  if (htfBear && tdStr >= 40) {
+    // Strong BEAR cascade: long score hard-capped below threshold
+    // No matter how many bullish factors fired, longs are disallowed
+    var longCap = Math.max(0, Math.round(44 - (tdStr - 40) * 0.3)); // 44→32 as strength rises
+    if (longScore > longCap) {
+      longFactors.push({label:'🚫 LONG score capped at '+longCap+' by BEAR cascade (strength '+tdStr+'%). 1H bullish moves are pullbacks — not trade signals.', score:-(longScore-longCap), type:'warn'});
+      longScore = longCap;
+    }
+  } else if (htfBull && tdStr >= 40) {
+    // Strong BULL cascade: short score hard-capped below threshold
+    var shortCap = Math.max(0, Math.round(44 - (tdStr - 40) * 0.3));
+    if (shortScore > shortCap) {
+      shortFactors.push({label:'🚫 SHORT score capped at '+shortCap+' by BULL cascade (strength '+tdStr+'%). 1H bearish moves are pullbacks — not trade signals.', score:-(shortScore-shortCap), type:'warn'});
+      shortScore = shortCap;
+    }
+  } else if (htfBear && tdStr >= 20) {
+    // Moderate BEAR cascade: allow counter signals only if very strong (>75pts)
+    if (longScore > 55) {
+      longScore = 55;
+      longFactors.push({label:'⚠️ LONG score limited to 55 — moderate BEAR cascade. Requires very strong confirmation.', score:0, type:'warn'});
+    }
+  } else if (htfBull && tdStr >= 20) {
+    if (shortScore > 55) {
+      shortScore = 55;
+      shortFactors.push({label:'⚠️ SHORT score limited to 55 — moderate BULL cascade. Requires very strong confirmation.', score:0, type:'warn'});
+    }
+  }
+
+  // Direct 4H vs 1H intraday conflict: HARD BLOCK regardless of macro
+  // This specifically addresses "1H BULL in 4H BEAR" and vice versa
+  if (topDown.oneHConflict || topDown.h4h1Clash ||
+      (topDown.fourHBias==='BEAR' && topDown.oneHBias==='BULL') ||
+      (topDown.fourHBias==='BULL' && topDown.oneHBias==='BEAR')) {
+    var conflictingDir = topDown.fourHBias==='BEAR' ? 'long' : 'short';
+    if (conflictingDir === 'long' && longScore >= 60) { /* 60 = signal threshold */
+      longScore = Math.min(longScore, 44); // cap below threshold
+      longFactors.push({label:'⛔ LONG blocked: 4H BEAR + 1H BULL = intraday conflict. The 1H rally is a PULLBACK. Wait for 1H to turn BEAR.', score:0, type:'warn'});
+    } else if (conflictingDir === 'short' && shortScore >= 60) { /* 60 = signal threshold */
+      shortScore = Math.min(shortScore, 44);
+      shortFactors.push({label:'⛔ SHORT blocked: 4H BULL + 1H BEAR = intraday conflict. The 1H dip is a PULLBACK. Wait for 1H to turn BULL.', score:0, type:'warn'});
+    }
+  }
+
   // Cap scores
   shortScore = Math.max(0, Math.min(100, shortScore));
   longScore  = Math.max(0, Math.min(100, longScore));
@@ -1391,8 +1466,19 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
   // === DECISION (threshold = 60) ===
   var THRESHOLD = 60;
   var direction = 'NEUTRAL';
+  // Standard direction: needs threshold + 5pt gap
+  // With cascade cap in place, counter-cascade direction can't reach threshold anyway
   if (shortScore >= THRESHOLD && shortScore > longScore + 5) direction = 'SHORT';
   else if (longScore >= THRESHOLD && longScore > shortScore + 5) direction = 'LONG';
+  // Safety: if cascade is strong but direction still shows counter-cascade, override
+  if (direction === 'LONG' && htfBear && tdStr >= 40) {
+    direction = 'NEUTRAL';
+    longFactors.push({label:'🚫 LONG direction overridden — BEAR cascade strength '+tdStr+'%. Signal suppressed.', score:0, type:'warn'});
+  }
+  if (direction === 'SHORT' && htfBull && tdStr >= 40) {
+    direction = 'NEUTRAL';
+    shortFactors.push({label:'🚫 SHORT direction overridden — BULL cascade strength '+tdStr+'%. Signal suppressed.', score:0, type:'warn'});
+  }
 
   // === ATR-BASED LEVELS ===
   var levels = null;
@@ -1503,6 +1589,8 @@ function updateScalpPanel(result) {
   var ssl1h = result.context.liq1h.ssl.filter(function(x){return x<p;}).slice(0,3);
 
   var td = ctx.topDown || {};
+  var htfBear = ctx.htfBear || false;
+  var htfBull = ctx.htfBull || false;
   function bl(b){ return b==='BULL'?'<span style="color:var(--green)">BULL</span>':b==='BEAR'?'<span style="color:var(--red)">BEAR</span>':'<span style="color:var(--text2)">NEUT</span>'; }
   el.innerHTML =
     '<div style="background:rgba(168,85,247,.06);border:1px solid rgba(168,85,247,.22);border-radius:8px;padding:9px 11px;margin-bottom:8px;font-size:.62rem;line-height:1.6">'
@@ -1615,9 +1703,34 @@ function updateIntradayPanel(result) {
         + (conflictMsg || ('⚠️ <strong>4H counter-trend vs macro:</strong> Pullback inside macro '+biasLabel(td.bias)+'. Reduce size 50%. Target only 1H liquidity.'))
         + '</div>'
       : '';
-    var noTradeWarn = dir==='NEUTRAL'
-      ? '<div style="margin-top:6px;font-size:.65rem;color:var(--warn)"><strong>⛔ NO TRADE</strong> — Intraday confluence insufficient ('+score+'/100 &lt; '+result.threshold+'). Await 4H BOS confirmation in macro direction.</div>'
-      : '<div style="margin-top:5px;font-size:.62rem;color:var(--text2)">✅ ATR-based trade levels updated below ↓</div>';
+    var suppressedByBear = htfBear && td.strength >= 40 && (dir === 'NEUTRAL' || dir === 'LONG');
+    var suppressedByBull = htfBull && td.strength >= 40 && (dir === 'NEUTRAL' || dir === 'SHORT');
+    var intraConflict = ctx.oneHConflict || ((td.fourHBias==='BEAR'&&td.oneHBias==='BULL')||(td.fourHBias==='BULL'&&td.oneHBias==='BEAR'));
+    var noTradeWarn;
+    if (intraConflict && dir === 'NEUTRAL') {
+      noTradeWarn = '<div style="margin-top:7px;padding:8px 10px;background:rgba(255,61,90,.1);border-radius:6px;border:1px solid rgba(255,61,90,.3);font-size:.64rem;color:var(--red);line-height:1.6">'
+        + '⛔ <strong>4H vs 1H CONFLICT — NO TRADE</strong><br>'
+        + (td.fourHBias==='BEAR'
+           ? '4H is <strong>BEAR</strong> but 1H is <strong>BULL</strong>. The 1H rally is a <strong>pullback</strong> inside the 4H downtrend.<br>🔑 Wait for: 1H to form a <strong>BEAR BOS</strong>, then short from the 4H supply zone.'
+           : '4H is <strong>BULL</strong> but 1H is <strong>BEAR</strong>. The 1H dip is a <strong>pullback</strong> inside the 4H uptrend.<br>🔑 Wait for: 1H to form a <strong>BULL BOS</strong>, then long from the 4H demand zone.')
+        + '</div>';
+    } else if (suppressedByBear) {
+      noTradeWarn = '<div style="margin-top:7px;padding:8px 10px;background:rgba(255,61,90,.1);border-radius:6px;border:1px solid rgba(255,61,90,.3);font-size:.64rem;color:var(--red);line-height:1.6">'
+        + '⛔ <strong>BEAR CASCADE ACTIVE ('+td.strength+'% strength) — LONGS SUPPRESSED</strong><br>'
+        + 'The Yearly→Weekly→Daily cascade is BEARISH. Any 1H bullish signal is a <strong>pullback bounce</strong>, not a reversal.<br>'
+        + '🔑 Only trade: <strong>SHORT</strong> setups from 4H supply zones when 1H turns BEAR.'
+        + '</div>';
+    } else if (suppressedByBull) {
+      noTradeWarn = '<div style="margin-top:7px;padding:8px 10px;background:rgba(0,230,118,.1);border-radius:6px;border:1px solid rgba(0,230,118,.3);font-size:.64rem;color:var(--green);line-height:1.6">'
+        + '⛔ <strong>BULL CASCADE ACTIVE ('+td.strength+'% strength) — SHORTS SUPPRESSED</strong><br>'
+        + 'The Yearly→Weekly→Daily cascade is BULLISH. Any 1H bearish signal is a <strong>pullback dip</strong>, not a reversal.<br>'
+        + '🔑 Only trade: <strong>LONG</strong> setups from 4H demand zones when 1H turns BULL.'
+        + '</div>';
+    } else if (dir === 'NEUTRAL') {
+      noTradeWarn = '<div style="margin-top:6px;font-size:.65rem;color:var(--warn)"><strong>⛔ NO TRADE</strong> — Intraday confluence insufficient ('+score+'/100 &lt; '+result.threshold+'). Await 4H BOS confirmation in macro direction.</div>';
+    } else {
+      noTradeWarn = '<div style="margin-top:5px;font-size:.62rem;color:var(--text2)">✅ Cascade aligned · ATR-based trade levels updated below ↓</div>';
+    }
     ctxEl.innerHTML =
       '<div style="background:'+biasBg+';border:1px solid '+biasBdr+';border-radius:9px;padding:11px 13px;margin-bottom:8px">'
       +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
@@ -1634,6 +1747,7 @@ function updateIntradayPanel(result) {
   // Update levels with live data
   if (result.levels) {
     var lv = result.levels;
+    if(!lv||!isFinite(lv.entry)||!isFinite(lv.sl))return; /* guard against NaN levels */
     var pfx = dir==='SHORT'?'–':'+';
     updateLevelEl('intra-entry', '$'+lv.entry.toFixed(2));
     updateLevelEl('intra-sl',    '$'+lv.sl.toFixed(2)+'  ('+pfx+lv.slPct+'%)');

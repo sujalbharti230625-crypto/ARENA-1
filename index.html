@@ -2059,7 +2059,7 @@ function runSim(mtf,cfg){
   var capital=cfg.cap,inTrade=false,tSide='',tEntry=0,tSL=0,tTP1=0,tTP2=0,tTP3=0,tOpen=null,tQuality='low';
   var tp1Hit=false,tp2Hit=false,tp1Rem=1.0;
   var tPosSizeEth=0,riskUSDTBase=0,slDistBase=1;
-  var totalFees=0,totalFunding=0,skippedLowQ=0,skippedCascade=0;
+  var totalFees=0,totalFunding=0,skippedLowQ=0,skippedCascade=0,cascadeCapped=0;
   var tMacroBias='NEUTRAL',tMacroStr=0,tH4Conflict=false;
   var tH1B='NEUTRAL',tH1Conflict=false,tH4H1Clash=false;
   var N=entryCands.length;
@@ -2296,10 +2296,15 @@ function runSim(mtf,cfg){
       /* HARD BLOCK 1: Strong macro opposing signal direction */
       if(macroOpposes&&macroStr>=40){skippedCascade++;continue;}
 
-      /* HARD BLOCK 2: 4H+1H direct conflict — skip intraday BOS signals
-         This is the exact fix for "1H bull BOS in 4H bear trend" confusion.
-         If 4H BEAR and 1H BULL, a BOS on either TF is a pullback leg, not a trade. */
-      if(_h4h1Clash&&macroStr>=30){skippedCascade++;continue;}
+      /* HARD BLOCK 2: 4H+1H direct conflict — block when macro has clear direction
+         Root cause of 1H vs 4H disagreement: a 1H BOS opposing 4H trend
+         is a PULLBACK leg inside the 4H move — never enter in that direction. */
+      if(_h4h1Clash){
+        /* If cascade has clear direction (non-neutral) and is at least weak, block */
+        if(macroDir!=='NEUTRAL'&&macroStr>=25){skippedCascade++;continue;}
+        /* Even neutral macro: if 4H and 1H directly disagree, skip */
+        if(macroDir==='NEUTRAL'&&_h4B!=='NEUTRAL'&&_h1B!=='NEUTRAL'){skippedCascade++;continue;}
+      }
 
       var cascadeBonus=0;
       if(macroAligns){
@@ -2317,8 +2322,8 @@ function runSim(mtf,cfg){
         /* 1H pullback → slight reduction */
         if(td.h1IsPullback)cascadeBonus=Math.floor(cascadeBonus*0.75);
       } else if(macroOpposes){
-        /* Weak macro (<40%) — allow but heavily penalise */
-        score2=Math.floor(score2*0.30); cascadeBonus=-15;
+        /* Weak opposing macro (20-39%) — moderate penalty, allow if very high quality */
+        cascadeBonus=-20; /* flat penalty instead of multiply (avoids 0*0.30=0 then -15 = -15 → 0) */
       } else {
         /* Neutral macro — require 4H+1H agreement */
         if(_h4B===_h1B&&_h4B!=='NEUTRAL'){
@@ -2329,43 +2334,87 @@ function runSim(mtf,cfg){
       }
       score2+=cascadeBonus;
 
-      /* S/D Zone */
+      /* S/D Zone — CASCADE-GATED (mirrors tradeplan.html F3 fix) */
+      /* Demand zones in BEAR cascade = pullback zones (worth 30%), not reversal signals */
+      /* Supply zones in BULL cascade = pullback zones (worth 30%), not reversal signals */
       var sdSc2=0;
       for(var si2=5;si2<n2-3;si2++){
         var bd2=Math.abs(slice2[si2].c-slice2[si2].o),pb2=Math.abs(slice2[si2-1].c-slice2[si2-1].o);
         var rng2b=slice2[si2].h-slice2[si2].l||0.001;
         if(bd2/rng2b<0.55||bd2<pb2*1.3)continue;
-        if(slice2[si2].c>slice2[si2].o&&side2==='long'){var dd=Math.abs(cp-slice2[si2].o)/cp;if(dd<0.01)sdSc2=Math.max(sdSc2,20);else if(dd<0.025)sdSc2=Math.max(sdSc2,12);}
-        if(slice2[si2].c<slice2[si2].o&&side2==='short'){var dd2=Math.abs(cp-slice2[si2].c)/cp;if(dd2<0.01)sdSc2=Math.max(sdSc2,20);else if(dd2<0.025)sdSc2=Math.max(sdSc2,12);}
+        if(slice2[si2].c>slice2[si2].o&&side2==='long'){
+          var dd=Math.abs(cp-slice2[si2].o)/cp;
+          var rawSD=dd<0.01?20:dd<0.025?12:0;
+          /* Demand zone in BEAR cascade = pullback area only */
+          var sdMult=(macroDir==='BEAR'&&macroStr>=40)?0.30:(macroDir==='BEAR'&&macroStr>=20)?0.55:1.0;
+          sdSc2=Math.max(sdSc2,Math.round(rawSD*sdMult));
+        }
+        if(slice2[si2].c<slice2[si2].o&&side2==='short'){
+          var dd2=Math.abs(cp-slice2[si2].c)/cp;
+          var rawSD2=dd2<0.01?20:dd2<0.025?12:0;
+          /* Supply zone in BULL cascade = pullback area only */
+          var sdMult2=(macroDir==='BULL'&&macroStr>=40)?0.30:(macroDir==='BULL'&&macroStr>=20)?0.55:1.0;
+          sdSc2=Math.max(sdSc2,Math.round(rawSD2*sdMult2));
+        }
       }
       score2+=sdSc2;
 
-      /* Candle trigger */
+      /* Candle trigger — CASCADE-GATED (mirrors tradeplan.html F6 fix) */
+      /* Bullish candles in BEAR cascade = pullback signals (worth 25%) */
+      /* Bearish candles in BULL cascade = pullback signals (worth 25%) */
       var lc2=slice2[n2-1],pc2=slice2[n2-2];
       var bdy2=Math.abs(lc2.c-lc2.o),rng2c=lc2.h-lc2.l||0.001;
       var loW2=Math.min(lc2.o,lc2.c)-lc2.l,upW2=lc2.h-Math.max(lc2.o,lc2.c);
+      /* Multiplier: 1.0 = aligned, 0.25 = counter-cascade */
+      var _candleMult=(macroDir==='BEAR'&&side2==='long'&&macroStr>=40)?0.25:
+                      (macroDir==='BULL'&&side2==='short'&&macroStr>=40)?0.25:
+                      (macroDir==='BEAR'&&side2==='long'&&macroStr>=20)?0.50:
+                      (macroDir==='BULL'&&side2==='short'&&macroStr>=20)?0.50:1.0;
       if(side2==='long'){
-        if(lc2.c>lc2.o&&loW2>bdy2*2.0)score2+=20;
-        else if(lc2.c>lc2.o&&loW2>bdy2*1.2)score2+=14;
-        else if(lc2.c>lc2.o&&bdy2>Math.abs(pc2.c-pc2.o)*1.3)score2+=16;
-        else if(lc2.c>lc2.o&&bdy2/rng2c>0.65)score2+=10;
-        else if(lc2.c>lc2.o)score2+=5;else score2-=8;
+        var _rawC=0;
+        if(lc2.c>lc2.o&&loW2>bdy2*2.0)_rawC=20;
+        else if(lc2.c>lc2.o&&loW2>bdy2*1.2)_rawC=14;
+        else if(lc2.c>lc2.o&&bdy2>Math.abs(pc2.c-pc2.o)*1.3)_rawC=16;
+        else if(lc2.c>lc2.o&&bdy2/rng2c>0.65)_rawC=10;
+        else if(lc2.c>lc2.o)_rawC=5;else _rawC=-8;
+        score2+=(_rawC>0)?Math.round(_rawC*_candleMult):_rawC;
       }else{
-        if(lc2.c<lc2.o&&upW2>bdy2*2.0)score2+=20;
-        else if(lc2.c<lc2.o&&upW2>bdy2*1.2)score2+=14;
-        else if(lc2.c<lc2.o&&bdy2>Math.abs(pc2.c-pc2.o)*1.3)score2+=16;
-        else if(lc2.c<lc2.o&&bdy2/rng2c>0.65)score2+=10;
-        else if(lc2.c<lc2.o)score2+=5;else score2-=8;
+        var _rawC2=0;
+        if(lc2.c<lc2.o&&upW2>bdy2*2.0)_rawC2=20;
+        else if(lc2.c<lc2.o&&upW2>bdy2*1.2)_rawC2=14;
+        else if(lc2.c<lc2.o&&bdy2>Math.abs(pc2.c-pc2.o)*1.3)_rawC2=16;
+        else if(lc2.c<lc2.o&&bdy2/rng2c>0.65)_rawC2=10;
+        else if(lc2.c<lc2.o)_rawC2=5;else _rawC2=-8;
+        score2+=(_rawC2>0)?Math.round(_rawC2*_candleMult):_rawC2;
       }
 
-      /* Volume */
+      /* Volume — CASCADE-GATED */
       var vols2=slice2.slice(-10).map(function(x){return x.v;});
       var avgV2=vols2.slice(0,-1).reduce(function(s,v){return s+v;},0)/(vols2.length-1||1);
-      if(lc2.v>avgV2*2.0)score2+=10;else if(lc2.v>avgV2*1.4)score2+=6;else if(lc2.v>avgV2*0.9)score2+=3;
+      var _volMult=(!macroAligns&&macroStr>=40)?0.30:(!macroAligns&&macroStr>=20)?0.60:1.0;
+      var _rawVol=lc2.v>avgV2*2.0?10:lc2.v>avgV2*1.4?6:lc2.v>avgV2*0.9?3:0;
+      score2+=Math.round(_rawVol*_volMult);
 
-      /* Momentum */
+      /* Momentum — CASCADE-GATED */
       var mom2=slice2[n2-1].c-slice2[Math.max(0,n2-4)].c;
-      if((side2==='long'&&mom2>0)||(side2==='short'&&mom2<0))score2+=5;
+      if((side2==='long'&&mom2>0)||(side2==='short'&&mom2<0)){
+        /* Only award momentum bonus when aligned with cascade */
+        score2+=(macroAligns||(macroStr<20))?5:0;
+      }
+
+      /* ══ POST-SCORING CASCADE CAP — THE DEFINITIVE FIX ══
+         Mirrors tradeplan.html exactly.
+         Even if factors accumulated points for the wrong direction,
+         the cap prevents a counter-cascade signal from firing. */
+      if(!macroAligns&&macroStr>=40){
+        var _counterCap=Math.max(0,Math.round(44-(macroStr-40)*0.3));
+        if(score2>_counterCap){score2=_counterCap;cascadeCapped++;}
+      } else if(!macroAligns&&macroStr>=20){
+        if(score2>55){score2=55;cascadeCapped++;}
+      }
+      if(_h4h1Clash&&score2>=50){
+        score2=Math.min(score2,44);cascadeCapped++;
+      }
 
       score2=Math.max(0,Math.min(100,score2));
       tQuality=score2>=65?'high':score2>=45?'medium':'low';
@@ -2439,6 +2488,7 @@ function runSim(mtf,cfg){
   }
   var r=analyze(trades,equity,cfg,totalFees,totalFunding,skippedLowQ);
   r.skippedCascade=skippedCascade;
+  r.cascadeCapped=cascadeCapped; /* signals suppressed by post-scoring cap */
   return r;
 }
 
@@ -2608,6 +2658,15 @@ function autoCalibrate(r,cfg){
     newThresh=Math.min(newThresh+2,70);
   }
   if(cascadeStats.skippedCascade>tot*2&&wr>=62)newThresh=Math.max(newThresh-2,42);
+  /* cascadeCapped: signals that passed BOS but were killed by post-scoring cap */
+  var cappedCount=r.cascadeCapped||cascadeStats.skippedCascade||0;
+  if(cappedCount>tot*1.5&&wr>=65){
+    /* Many signals being capped but WR is good → cap might be slightly aggressive */
+    newThresh=Math.max(newThresh-1,40);
+  } else if(cappedCount<tot*0.2&&wr<55){
+    /* Few signals capped but WR is bad → tighten score threshold */
+    newThresh=Math.min(newThresh+2,70);
+  }
 
   /* ── 3. SL adjustment based on PF ── */
   /* If PF<1.2 despite decent WR, SL too wide → tighten; if WR<50 → widen to allow stops */
@@ -2747,7 +2806,7 @@ function renderBTRes(r,cfg,calib){
   var aligned1HWR=aligned1HT.length?(aligned1HT.filter(function(t){return t.result==='win';}).length/aligned1HT.length*100).toFixed(1):'—';
   var pullback1HWR=pullback1HT.length?(pullback1HT.filter(function(t){return t.result==='win';}).length/pullback1HT.length*100).toFixed(1):'—';
   var h4h1WR=h4h1ClashT.length?(h4h1ClashT.filter(function(t){return t.result==='win';}).length/h4h1ClashT.length*100).toFixed(1):'—';
-  var cascadeHtml='<div class="fee-bd" style="border-color:rgba(123,94,167,.3)">'    +'<div class="fee-bd-title" style="color:var(--accent2)">🌊 5-Tier Cascade Analysis (Yearly→Weekly→Daily→4H→1H)</div>'    +'<div class="fee-bd-row"><span>🏆 Full-stack aligned (4H+1H both confirm)</span><span style="color:var(--green)">'+aligned1HT.length+' trades · WR: '+aligned1HWR+'%</span></div>'    +'<div class="fee-bd-row"><span>🔶 Macro-aligned but 1H pullback</span><span style="color:var(--gold)">'+pullback1HT.length+' trades · WR: '+pullback1HWR+'% · Size ×0.75</span></div>'    +'<div class="fee-bd-row"><span>⚠️ 4H conflict (pullback in macro trend)</span><span style="color:var(--warn)">'+(r.trades.filter(function(t){return t.h4Conflict;}).length)+' trades · Size ×0.65</span></div>'    +'<div class="fee-bd-row"><span>⚠️ Counter-cascade trades (weak macro)</span><span style="color:var(--warn)">'+counterTrades.length+' trades · WR: '+ctrWR+'% · Size ×0.30</span></div>'    +'<div class="fee-bd-row"><span style="color:var(--red)">🚫 4H+1H direct conflict — skipped</span><span style="color:var(--red)">'+h4h1ClashT.length+' trades blocked · WR if taken: '+h4h1WR+'%</span></div>'    +'<div class="fee-bd-row"><span style="color:var(--red)">🚫 Hard-blocked (macro strength ≥40%)</span><span style="color:var(--red)">'+(r.skippedCascade||0)+' signals blocked</span></div>'    +'<div class="fee-bd-row" style="border-top:1px solid rgba(255,255,255,.06);margin-top:4px;padding-top:6px;font-size:.63rem;color:var(--text2)">'    +'<strong style="color:var(--accent2)">Key insight:</strong> Compare Full-stack WR vs Pullback WR. '    +'If Full-stack >> Pullback → calibration will tighten threshold to filter pullback entries. '    +'4H+1H conflict trades are hard-blocked — they are the intraday disagreement problem now resolved.'    +'</div>'    +'</div>';
+  var cascadeHtml='<div class="fee-bd" style="border-color:rgba(123,94,167,.3)">'    +'<div class="fee-bd-title" style="color:var(--accent2)">🌊 5-Tier Cascade Analysis (Yearly→Weekly→Daily→4H→1H)</div>'    +'<div class="fee-bd-row"><span>🏆 Full-stack aligned (4H+1H both confirm)</span><span style="color:var(--green)">'+aligned1HT.length+' trades · WR: '+aligned1HWR+'%</span></div>'    +'<div class="fee-bd-row"><span>🔶 Macro-aligned but 1H pullback</span><span style="color:var(--gold)">'+pullback1HT.length+' trades · WR: '+pullback1HWR+'% · Size ×0.75</span></div>'    +'<div class="fee-bd-row"><span>⚠️ 4H conflict (pullback in macro trend)</span><span style="color:var(--warn)">'+(r.trades.filter(function(t){return t.h4Conflict;}).length)+' trades · Size ×0.65</span></div>'    +'<div class="fee-bd-row"><span>⚠️ Counter-cascade trades (weak macro)</span><span style="color:var(--warn)">'+counterTrades.length+' trades · WR: '+ctrWR+'% · Size ×0.30</span></div>'    +'<div class="fee-bd-row"><span style="color:var(--red)">🚫 4H+1H direct conflict — skipped</span><span style="color:var(--red)">'+h4h1ClashT.length+' trades blocked · WR if taken: '+h4h1WR+'%</span></div>'    +'<div class="fee-bd-row"><span style="color:var(--red)">🚫 Hard-blocked before scoring (macro ≥40%)</span><span style="color:var(--red)">'+(r.skippedCascade||0)+' signals</span></div>'    +'<div class="fee-bd-row"><span style="color:var(--warn)">⚡ Post-scoring cap (counter-cascade survived BOS)</span><span style="color:var(--warn)">'+(r.cascadeCapped||0)+' signals capped</span></div>'    +'<div class="fee-bd-row" style="border-top:1px solid rgba(255,255,255,.06);margin-top:4px;padding-top:6px;font-size:.63rem;color:var(--text2)">'    +'<strong style="color:var(--accent2)">Key insight:</strong> Compare Full-stack WR vs Pullback WR. '    +'If Full-stack >> Pullback → calibration will tighten threshold to filter pullback entries. '    +'4H+1H conflict trades are hard-blocked — they are the intraday disagreement problem now resolved.'    +'</div>'    +'</div>';
 
   var feeHtml='<div class="fee-bd"><div class="fee-bd-title">💸 Delta Exchange Fee Breakdown (Corrected)</div>'
     +'<div class="fee-bd-row"><span>Maker rate (used for limit entries)</span><span style="color:var(--text)">'+(cfg.maker*100).toFixed(3)+'%</span></div>'

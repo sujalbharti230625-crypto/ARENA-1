@@ -562,7 +562,11 @@ function fetchPrice(){
       if(ce){ce.textContent=(up?'+':'')+chg.toFixed(2)+'%';ce.className='tm-chg '+(up?'up':'dn');}
       buildLadder(p);
       calcR();
-    }).catch(function(){});
+    }).catch(function(){
+      /* OKX fetch failed — show stale indicator */
+      var pe=document.getElementById('lp');
+      if(pe)pe.style.opacity='0.5';
+    });
 }
 
 function buildLadder(price){
