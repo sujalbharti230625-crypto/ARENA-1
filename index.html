@@ -767,6 +767,7 @@ var S={
   ew:{wave:'3',phase:'impulse',degree:'Intermediate',fib618:0,fib382:0,target5:0,targetA:0},
   supplyZ:[],demandZ:[],liqLevels:[],patterns:[],ms:{},
   loaded:false,source:'—',
+  cascade:{dir:'NEUTRAL',h4Bias:'NEUTRAL',h1Bias:'NEUTRAL',str:0,h1Conflict:false,fresh:false},
 
   btStyle:'intraday',  
   btCfg:{},
@@ -874,6 +875,7 @@ function fetchCandles(tf){
 
       syncLivePriceToCandles();
       var _cL=document.getElementById('chartLoad');if(_cL)_cL.style.display='none';
+      fetchCascadeBackground();
       computeAll(); drawChart();
     })
     .catch(function(){
@@ -890,10 +892,46 @@ function fetchCandles(tf){
       S.candles=candles; S.loaded=true;
           syncLivePriceToCandles();  
           var _cL=document.getElementById('chartLoad');if(_cL)_cL.style.display='none';
+          fetchCascadeBackground();
           computeAll(); drawChart();
         })
         .catch(function(){synthCandles(tf);});
     });
+}
+
+
+function fetchCascadeBackground() {
+  /* Silently fetch 4H + 1H + Daily candles for cascade computation.
+     Uses generation guard to discard stale results on TF switches. */
+  S._cascadeGen = (S._cascadeGen||0) + 1;
+  var _gen = S._cascadeGen;
+
+  function parseOKX(d) {
+    if(!d.data||d.data.length<10) return null;
+    var raw=d.data, c=[];
+    for(var i=raw.length-1;i>=0;i--)
+      c.push({t:+raw[i][0],o:+raw[i][1],h:+raw[i][2],l:+raw[i][3],c:+raw[i][4],v:+raw[i][5]});
+    return c;
+  }
+
+  var _bg4h = tFetch('https://www.okx.com/api/v5/market/candles?instId=ETH-USDT&bar=4H&limit=100')
+    .then(function(r){return r.json();}).then(parseOKX).catch(function(){return null;});
+
+  var _bg1h = tFetch('https://www.okx.com/api/v5/market/candles?instId=ETH-USDT&bar=1H&limit=100')
+    .then(function(r){return r.json();}).then(parseOKX).catch(function(){return null;});
+
+  var _bgD  = tFetch('https://www.okx.com/api/v5/market/candles?instId=ETH-USDT&bar=1D&limit=60')
+    .then(function(r){return r.json();}).then(parseOKX).catch(function(){return null;});
+
+  Promise.all([_bg4h, _bg1h, _bgD]).then(function(res){
+    /* Discard if a newer fetchCascadeBackground started (TF switch) */
+    if(_gen !== S._cascadeGen) return;
+    var c4h=res[0], c1h=res[1], c1d=res[2];
+    if(c4h&&c1h) {
+      computeCascade(c4h, c1h, c1d);
+      if(S.price>0&&S.candles.length) genSignal();
+    }
+  }).catch(function(){});
 }
 
 function fetchUSDTDom(){
@@ -932,6 +970,7 @@ function synthCandles(tf){
   S.candles=candles;S.loaded=true;
   syncLivePriceToCandles();  
   var _cL=document.getElementById('chartLoad');if(_cL)_cL.style.display='none';
+  fetchCascadeBackground();
   computeAll();drawChart();
 }
 
@@ -963,8 +1002,8 @@ function computeZones(c){
   for(var j=sw;j<c.length-sw;j++){
     var isH=true,isL=true;
     for(var k=1;k<=sw;k++){if(c[j].h<=c[j-k].h||c[j].h<=c[j+k].h)isH=false;if(c[j].l>=c[j-k].l||c[j].l>=c[j+k].l)isL=false;}
-    if(isH)liq.push({price:c[j].h,type:'ssl',mag:c[j].v,i:j});
-    if(isL)liq.push({price:c[j].l,type:'bsl',mag:c[j].v,i:j});
+    if(isH)liq.push({price:c[j].h,type:'bsl',mag:c[j].v,i:j}); /* swing HIGH = BSL (buy-side liq above) */
+    if(isL)liq.push({price:c[j].l,type:'ssl',mag:c[j].v,i:j}); /* swing LOW  = SSL (sell-side liq below) */
   }
   S.liqLevels=liq.slice(-24);
 }
@@ -978,7 +1017,15 @@ function computeStructure(c){
   var choch=rH>pH&&last[last.length-1].c<pL;
   var bos=rH>pH&&!choch;
   var trend=rH>pH?'Bullish':rL<pL?'Bearish':'Ranging';
-  var htf=c.slice(-100);var htfTrend=htf[htf.length-1].c>htf[0].c?'Bullish':'Bearish';
+  /* htfTrend: use cascade daily bias if fresh, else 100-bar single-TF fallback */
+  var htfTrend;
+  if(S.cascade&&S.cascade.fresh&&S.cascade.dir!=='NEUTRAL'){
+    htfTrend=S.cascade.dir==='BULL'?'Bullish':'Bearish';
+  }else if(S.cascade&&S.cascade.fresh&&S.cascade.dailyBias&&S.cascade.dailyBias!=='NEUTRAL'){
+    htfTrend=S.cascade.dailyBias==='BULL'?'Bullish':'Bearish';
+  }else{
+    var htf=c.slice(-100);htfTrend=htf[htf.length-1].c>htf[0].c?'Bullish':'Bearish';
+  }
 
   var obs=[];
   for(var i=5;i<c.length-2;i++){
@@ -1026,14 +1073,18 @@ function computeEW(c){
   var wave,phase;
   if(pivots.length>=6){
     var lp=pivots[pivots.length-1];
-    if(lp.type==='L'&&pos<.35){wave='2';phase='correction';}
-    else if(lp.type==='H'&&pos>.55){wave='3';phase='impulse';}
-    else if(lp.type==='L'&&pos>.35){wave='4';phase='correction';}
-    else if(lp.type==='H'&&pos>.75){wave='5';phase='impulse';}
-    else{wave='A';phase='correction';}
+    /* Order matters: most specific conditions first */
+    if(lp.type==='H'&&pos>.75){wave='5';phase='impulse';}      /* near high after H pivot = wave 5 */
+    else if(lp.type==='H'&&pos>.50){wave='3';phase='impulse';} /* mid-range after H pivot = wave 3 */
+    else if(lp.type==='L'&&pos<.30){wave='2';phase='correction';}
+    else if(lp.type==='L'&&pos>.35&&pos<.65){wave='4';phase='correction';}
+    else if(lp.type==='L'&&pos>.65){wave='A';phase='correction';} /* high low after peak = correction */
+    else{wave='3';phase='impulse';}
   }else{
-    if(pos<.20){wave='2';phase='correction';}else if(pos<.50){wave='3';phase='impulse';}
-    else if(pos<.60){wave='4';phase='correction';}else if(pos<.80){wave='5';phase='impulse';}
+    if(pos<.20){wave='2';phase='correction';}
+    else if(pos<.50){wave='3';phase='impulse';}
+    else if(pos<.60){wave='4';phase='correction';}
+    else if(pos<.80){wave='5';phase='impulse';}
     else{wave='A';phase='correction';}
   }
   S.ew={wave:wave,phase:phase,degree:'Intermediate',target5:S.price*1.0618,targetA:S.price*.962,fib618:mn+range*.618,fib382:mn+range*.382};
@@ -1047,7 +1098,14 @@ function gradeQuality(){
   if(ms.bos) scores.structure=Math.min(10,scores.structure+2);
   if(ms.choch) scores.structure=Math.min(10,scores.structure+1);
 
-  scores.htfAlign = (ms.trend===ms.htfTrend)?10:5;
+  /* htfAlign: score cascade alignment, not single-TF vs 100-bar match */
+  var _casDir = S.cascade&&S.cascade.fresh ? S.cascade.dir : 'NEUTRAL';
+  var _intraDir = (ms.trend==='Bullish') ? 'BULL' : (ms.trend==='Bearish') ? 'BEAR' : 'NEUTRAL';
+  var _cascadeH4 = S.cascade&&S.cascade.fresh ? S.cascade.h4Bias : 'NEUTRAL';
+  if(_casDir!=='NEUTRAL' && _intraDir===_casDir) scores.htfAlign = 10;      /* cascade + local agree */
+  else if(_cascadeH4!=='NEUTRAL' && _intraDir===_cascadeH4) scores.htfAlign = 8; /* 4H + local agree */
+  else if(_casDir==='NEUTRAL') scores.htfAlign = 5;                          /* no cascade data yet */
+  else scores.htfAlign = 0;                                                   /* cascade conflicts local */
 
   var nearDem=S.demandZ[0],nearSup=S.supplyZ[0];
   var inZone=false;
@@ -1081,9 +1139,96 @@ function gradeQuality(){
   S.quality={scores:scores,total:total,maxTotal:maxTotal,pct:Math.round(pct),grade:grade};
 }
 
+
+function computeCascade(c4h, c1h, c1d) {
+  /* 3-tier cascade: Daily → 4H → 1H
+     Daily = macro direction gate (replaces Yearly/Weekly for live signal)
+     4H    = intermediate trend (must agree with Daily to fire)
+     1H    = entry confirmation (must agree with 4H to fire)
+     h1Conflict = 1H vs 4H disagreement → WAIT, no trade */
+  if(!c4h||c4h.length<20||!c1h||c1h.length<20){S.cascade.fresh=false;return;}
+
+  function trend(c, lb) {
+    if(!c||c.length<4) return 'NEUTRAL';
+    var n=c.length, recent=c[n-1].c, ago=c[Math.max(0,n-lb)].o;
+    return recent>ago?'BULL':'BEAR';
+  }
+  function bos(c, lb, prev) {
+    lb=lb||5; prev=prev||10;
+    if(!c||c.length<lb+prev) return {bull:false,bear:false};
+    var n=c.length;
+    var rH=aMax(c.slice(-lb).map(function(x){return x.h;}));
+    var rL=aMin(c.slice(-lb).map(function(x){return x.l;}));
+    var pH=aMax(c.slice(-(lb+prev),-lb).map(function(x){return x.h;}));
+    var pL=aMin(c.slice(-(lb+prev),-lb).map(function(x){return x.l;}));
+    return {bull:rH>pH&&c[n-1].c>pH, bear:rL<pL&&c[n-1].c<pL};
+  }
+
+  /* Daily bias — macro gate */
+  var dailyBias = 'NEUTRAL';
+  if(c1d&&c1d.length>=20) {
+    var tD = trend(c1d, Math.min(20,c1d.length-1));
+    var bosD = bos(c1d, 5, 10);
+    dailyBias = (bosD.bull&&tD==='BULL')?'BULL':(bosD.bear&&tD==='BEAR')?'BEAR':tD;
+  } else {
+    /* Fallback: use 4H long-term trend as daily proxy (last 30 4H bars = 5 days) */
+    dailyBias = trend(c4h, Math.min(30,c4h.length-1));
+  }
+
+  var t4h = trend(c4h, Math.min(20,c4h.length-1));
+  var bos4h = bos(c4h, 5, 10);
+  var h4Bias = (bos4h.bull&&t4h==='BULL')?'BULL':(bos4h.bear&&t4h==='BEAR')?'BEAR':t4h;
+
+  var t1h = trend(c1h, Math.min(24,c1h.length-1));
+  var bos1h = bos(c1h, 5, 8);
+  var h1Bias = (bos1h.bull&&t1h==='BULL')?'BULL':(bos1h.bear&&t1h==='BEAR')?'BEAR':t1h;
+
+  /* 4H conflicts with Daily macro = counter-trend 4H move, reduce strength */
+  var h4ConflictsDaily = (dailyBias!=='NEUTRAL') &&
+    ((dailyBias==='BULL'&&h4Bias==='BEAR')||(dailyBias==='BEAR'&&h4Bias==='BULL'));
+
+  /* 1H conflicts with 4H = entry not confirmed, must wait */
+  var h1Conflict = (h4Bias==='BEAR'&&h1Bias==='BULL')||(h4Bias==='BULL'&&h1Bias==='BEAR');
+
+  /* Cascade direction: require Daily+4H agreement for high-conviction trades */
+  var dir = 'NEUTRAL';
+  if(!h1Conflict) {
+    if(h4Bias==='BEAR' && dailyBias!=='BULL') dir='BEAR';      /* 4H BEAR, daily not opposing */
+    else if(h4Bias==='BULL' && dailyBias!=='BEAR') dir='BULL'; /* 4H BULL, daily not opposing */
+    else if(h4Bias==='NEUTRAL'&&h1Bias!=='NEUTRAL') dir=h1Bias;
+  }
+
+  var str = 0;
+  if(dailyBias!=='NEUTRAL'&&dailyBias===dir) str+=30;
+  if(h4Bias===dir) str+=40;
+  if(!h1Conflict&&h1Bias===dir) str+=30;
+  if(h4ConflictsDaily) str=Math.floor(str*0.6);
+  if(h1Conflict) str=Math.floor(str*0.4);
+  str=Math.min(100,str);
+
+  S.cascade = {
+    dir:dir, dailyBias:dailyBias, h4Bias:h4Bias, h1Bias:h1Bias,
+    str:str, h1Conflict:h1Conflict, h4ConflictsDaily:h4ConflictsDaily, fresh:true
+  };
+}
 function genSignal(){
   var ms=S.ms,ew=S.ew,p=S.price,q=S.quality;
   if(!S.candles.length||!p)return;
+
+  var cas=S.cascade;
+  var h4B=cas.h4Bias, h1B=cas.h1Bias;
+  var h1Conflict=cas.h1Conflict;
+
+  /* ── CASCADE GATE (THE REAL FIX) ──────────────────────────────────────
+     If 4H and 1H disagree → NO TRADE in either direction.
+     If cascade dir is BEAR → only SHORT signals valid.
+     If cascade dir is BULL → only LONG signals valid.
+     This gate runs BEFORE any bias scoring. Signal type is set here
+     and cannot be overridden by pattern/zone/USDT scoring below.
+  ─────────────────────────────────────────────────────────────────────── */
+  var cascadeAllowLong  = !h1Conflict && (cas.dir==='BULL' || cas.dir==='NEUTRAL');
+  var cascadeAllowShort = !h1Conflict && (cas.dir==='BEAR' || cas.dir==='NEUTRAL');
+  var cascadeWaiting    = h1Conflict;  /* 4H vs 1H mismatch — must wait */
 
   var usdtDown=S.usdtDom<S.prevUsdtDom;
   var usdtBias=usdtDown?1:-1;
@@ -1093,40 +1238,69 @@ function genSignal(){
   var strBias=ms.trend==='Bullish'?1.5:ms.trend==='Bearish'?-1.5:0;
   var patBias=0;
   for(var pi2=0;pi2<S.patterns.length;pi2++)patBias+=S.patterns[pi2].bias==='bull'?1:-1;
-  var ewBias=ew.phase==='impulse'?(ms.htfTrend==='Bullish'?1:-1):0;
+  /* ewBias: use cascade direction for HTF context, not single-TF htfTrend */
+  var _cascDir = S.cascade&&S.cascade.fresh ? S.cascade.dir : 'NEUTRAL';
+  var _htfBull = _cascDir==='BULL' || (!S.cascade||!S.cascade.fresh) && ms.htfTrend==='Bullish';
+  var ewBias = ew.phase==='impulse' ? (_htfBull ? 1 : -1) : 0;
   var total=usdtBias+sdBias+strBias+patBias+ewBias;
 
+  /* Apply cascade direction weighting to total */
+  if(cas.dir==='BEAR') total -= 1.5;
+  else if(cas.dir==='BULL') total += 1.5;
+
   var type,entry,sl,tp1,tp2,tp3,desc,cfs;
-  if(total>=2){
+
+  /* Determine raw direction from total score */
+  var rawLong  = total>=2;
+  var rawShort = total<=-2;
+
+  /* Apply cascade gate — override if conflicts with HTF */
+  if(cascadeWaiting) {
+    /* 1H opposing 4H → no trade, always NEUTRAL */
+    rawLong=false; rawShort=false;
+  } else if(rawLong && !cascadeAllowLong) {
+    /* Want LONG but cascade is BEAR → suppress */
+    rawLong=false;
+  } else if(rawShort && !cascadeAllowShort) {
+    /* Want SHORT but cascade is BULL → suppress */
+    rawShort=false;
+  }
+
+  if(rawLong){
     type='long';var nd=S.demandZ[0];
     entry=nd?nd.top*.9982:p*.9985;sl=nd?nd.bot*.9965:entry*.983;
-
     var _gc=getCalibForTF(S.tf);
     var _t1m=_gc?_gc.tpM[0]:0.013, _t2m=_gc?_gc.tpM[1]:0.030, _t3m=_gc?_gc.tpM[2]:0.058;
     var _slm=_gc?_gc.slMult:null;
     if(_slm&&nd)sl=Math.min(nd.bot*.9965,entry*(1-_slm));
     else if(_slm)sl=entry*(1-_slm);
     tp1=entry*(1+_t1m);tp2=entry*(1+_t2m);tp3=entry*(1+_t3m);
-    desc='BOS on '+S.tf.toUpperCase()+'. '+(nd?'Fresh demand zone':'Key support')+'. Wave '+ew.wave+'. USDT Dom '+(usdtDown?'↓':'neutral')+'.';
-    cfs=['BOS confirmed','Demand '+(nd?fmt(nd.bot)+' – '+fmt(nd.top):'active'),'Wave '+ew.wave+' Impulse','USDT Dom '+(usdtDown?'↓ ETH Bullish':'Neutral')];
+    var cascadeNote=cas.fresh?(' · 4H:'+h4B+' 1H:'+h1B):'';
+    desc='BOS on '+S.tf.toUpperCase()+'. '+(nd?'Fresh demand zone':'Key support')+'. Wave '+ew.wave+'.'+cascadeNote;
+    cfs=['4H cascade: '+h4B+' · 1H: '+h1B+' ✅','BOS confirmed','Demand '+(nd?fmt(nd.bot)+' – '+fmt(nd.top):'active'),'Wave '+ew.wave+' Impulse'];
     S.patterns.filter(function(pt){return pt.bias==='bull';}).forEach(function(pt){cfs.push(pt.name+' ('+pt.tf+')');});
-  }else if(total<=-2){
+  } else if(rawShort){
     type='short';var ns=S.supplyZ[0];
     entry=ns?ns.bot*1.0018:p*1.0015;sl=ns?ns.top*1.0035:entry*1.017;
-
     var _gc2=getCalibForTF(S.tf);
     var _t1m2=_gc2?_gc2.tpM[0]:0.013, _t2m2=_gc2?_gc2.tpM[1]:0.030, _t3m2=_gc2?_gc2.tpM[2]:0.058;
     var _slm2=_gc2?_gc2.slMult:null;
     if(_slm2&&ns)sl=Math.max(ns.top*1.0035,entry*(1+_slm2));
     else if(_slm2)sl=entry*(1+_slm2);
     tp1=entry*(1-_t1m2);tp2=entry*(1-_t2m2);tp3=entry*(1-_t3m2);
-    desc='CHoCH. '+(ns?'Supply zone':'Resistance')+'. Wave '+ew.wave+' corrective. USDT Dom '+(usdtDown?'neutral':'↑')+'.';
-    cfs=['CHoCH shift','Supply '+(ns?fmt(ns.bot)+' – '+fmt(ns.top):'active'),'Wave '+ew.wave+' Corrective','USDT Dom '+(usdtDown?'Neutral':'↑ ETH Bearish')];
+    var cascadeNote2=cas.fresh?(' · 4H:'+h4B+' 1H:'+h1B):'';
+    desc='CHoCH. '+(ns?'Supply zone':'Resistance')+'. Wave '+ew.wave+'.'+cascadeNote2;
+    cfs=['4H cascade: '+h4B+' · 1H: '+h1B+' ✅','CHoCH shift','Supply '+(ns?fmt(ns.bot)+' – '+fmt(ns.top):'active'),'Wave '+ew.wave+' Corrective'];
     S.patterns.filter(function(pt){return pt.bias==='bear';}).forEach(function(pt){cfs.push(pt.name+' ('+pt.tf+')');});
-  }else{
+  } else {
     type='neutral';entry=p;sl=p*.983;tp1=p*1.012;tp2=p*1.025;tp3=p*1.045;
-    desc='Compression. Await BOS/CHoCH. Wave '+ew.wave+' pending.';
-    cfs=['No strong confluence','Await BOS/CHoCH','Watch S/D zone reaction'];
+    if(cascadeWaiting) {
+      desc='⏳ 4H '+(h4B)+' vs 1H '+(h1B)+' CONFLICT. Waiting for 1H to confirm '+(h4B)+' before trading.';
+      cfs=['⏳ 1H conflict — no trade','4H: '+h4B+' · 1H: '+h1B+' (wait for alignment)','Watch for 1H BOS '+(h4B==='BEAR'?'BEAR':'BULL')];
+    } else {
+      desc='Compression. Await BOS/CHoCH. Wave '+ew.wave+' pending.';
+      cfs=['No strong confluence','Await BOS/CHoCH','Watch S/D zone reaction'];
+    }
   }
   var rr=Math.abs(entry-sl)>0?Math.abs(tp2-entry)/Math.abs(entry-sl):0;
   S.signal={type:type,entry:entry,sl:sl,tp1:tp1,tp2:tp2,tp3:tp3,desc:desc,cfs:cfs,rr:rr.toFixed(1),ew:ew,total:total,priceAtSignal:S.price,tf:S.tf,generatedAt:Date.now()};
@@ -1569,7 +1743,7 @@ function renderRight(){
     +'<div class="ib-title" style="color:var(--accent2)">🔗 USDT Dominance</div>'
     +'<div style="display:flex;justify-content:space-between;font-size:.76rem;font-weight:800;margin:3px 0">'
     +'<span style="color:var(--accent2)">'+u.toFixed(2)+'%</span>'
-    +'<span style="font-size:.6rem;color:'+(uDown?'var(--green)':'var(--red)')+'">'+(!uDown?'▼ FALLING →ETH ↑':'▲ RISING →ETH ↓')+'</span>'
+    +'<span style="font-size:.6rem;color:'+(uDown?'var(--green)':'var(--red)')+'">'+(uDown?'▼ FALLING →ETH ↑':'▲ RISING →ETH ↓')+'</span>'
     +'</div>'
     +'<div class="u-gauge"><div class="u-fill" style="width:'+domPct+'%"></div></div>'
     +'<div style="display:flex;justify-content:space-between;font-size:.57rem;color:var(--text2)">'
