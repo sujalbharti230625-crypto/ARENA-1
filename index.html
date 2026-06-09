@@ -1939,8 +1939,9 @@ function runBT(){
     if(step<steps){setTimeout(doStep,65);}
     else{
       var yrs=cfg.period==='3y'?3:cfg.period==='2y'?2:1;
-      var candles=genHist(yrs,cfg.tf);
-      var results=runSim(candles,cfg);
+      /* Multi-TF dataset: same price series aggregated into W/D/4H/1H */
+      var _mtf=genHistMultiTF(yrs);
+      var results=runSim(_mtf,cfg);
       S.btResults=results;S.lastCfg=cfg;
       /* ── AUTO-CALIBRATE: derive optimal params from results ── */
       var calib=autoCalibrate(results,cfg);
@@ -1956,6 +1957,79 @@ function runBT(){
     }
   }
   setTimeout(doStep,40);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   genHistMultiTF — single shared price series → true multi-TF candles
+   Returns {h1, h4, d1, w1} — all derived from the same ticks.
+   ═══════════════════════════════════════════════════════════════════ */
+function genHistMultiTF(years){
+  var BASE_MS=3600000; /* 1H base (finest for BT performance) */
+  var now=Date.now(),start=now-years*365*24*3600*1000;
+  var totalBars=Math.min(Math.floor((now-start)/BASE_MS),8760); /* max 3yr of 1H bars */
+
+  /* ETH price milestones 2020-2026 */
+  var milestones=[
+    {p:0,v:1200},{p:.04,v:730},{p:.08,v:1200},{p:.14,v:2100},{p:.20,v:4380},
+    {p:.26,v:2800},{p:.32,v:4900},{p:.38,v:850},{p:.44,v:1200},{p:.50,v:1650},
+    {p:.54,v:2100},{p:.58,v:2600},{p:.62,v:3100},{p:.66,v:4200},
+    {p:.70,v:2400},{p:.74,v:1900},{p:.78,v:3900},
+    {p:.82,v:2900},{p:.88,v:4100},{p:.94,v:2800},{p:1.0,v:1634}
+  ];
+  function getBase(pct){
+    for(var ii=1;ii<milestones.length;ii++){
+      if(pct<=milestones[ii].p){
+        var t=(pct-milestones[ii-1].p)/(milestones[ii].p-milestones[ii-1].p);
+        return milestones[ii-1].v+(milestones[ii].v-milestones[ii-1].v)*t;
+      }
+    }return milestones[milestones.length-1].v;
+  }
+
+  /* Multi-scale phases (1H candle counts) */
+  var macroPhases=[
+    {d:.0015,v:.007,l:480},{d:-.0005,v:.009,l:160},{d:.0018,v:.008,l:400},
+    {d:-.0018,v:.013,l:240},{d:-.0024,v:.016,l:320},{d:.0004,v:.010,l:200},
+    {d:.0028,v:.012,l:480},{d:-.0012,v:.011,l:200},{d:.0020,v:.009,l:400},
+    {d:-.0022,v:.015,l:360}
+  ];
+  var microPhases=[
+    {d:.0006,v:.005,l:24},{d:-.0003,v:.007,l:8},{d:.0008,v:.006,l:20},
+    {d:-.0008,v:.008,l:12},{d:-.0010,v:.009,l:16},{d:.0002,v:.006,l:16},
+    {d:.0012,v:.008,l:24},{d:-.0005,v:.007,l:10},{d:.0007,v:.005,l:20},
+    {d:-.0009,v:.010,l:18}
+  ];
+  var _seed=Math.floor(years*1048576+totalBars);
+  function _rnd(){_seed=Math.imul(_seed,1664525)+1013904223|0;return(_seed>>>0)/4294967296;}
+
+  var price=1200,macroPh=0,macroCnt=0,microPh=0,microCnt=0;
+  var h1Bars=[];
+  for(var i=0;i<totalBars;i++){
+    var pct=i/totalBars,base=getBase(pct);
+    if(i%200===0)price=price*0.72+base*0.28;
+    var mp=macroPhases[macroPh%macroPhases.length];
+    if(++macroCnt>=mp.l){macroCnt=0;macroPh++;}
+    var up=microPhases[microPh%microPhases.length];
+    if(++microCnt>=up.l){microCnt=0;microPh++;}
+    var noise=(_rnd()-.48)*(up.v+mp.v*0.4);
+    price=Math.max(400,Math.min(8000,price*(1+mp.d+up.d+noise)));
+    var rng=price*(up.v*0.7)*_rnd();
+    var o=i===0?price:h1Bars[i-1].c;
+    h1Bars.push({t:start+i*BASE_MS,o:o,h:Math.max(o,price)+rng*.5,l:Math.min(o,price)-rng*.4,c:price,v:300+_rnd()*4000});
+  }
+
+  /* Aggregate to higher TFs */
+  function agg(ticks,pMs){
+    var out=[],cur=null;
+    for(var j=0;j<ticks.length;j++){
+      var c=ticks[j],bk=Math.floor(c.t/pMs)*pMs;
+      if(!cur||cur._b!==bk){
+        if(cur){delete cur._b;out.push(cur);}
+        cur={t:bk,o:c.o,h:c.h,l:c.l,c:c.c,v:c.v,_b:bk};
+      }else{if(c.h>cur.h)cur.h=c.h;if(c.l<cur.l)cur.l=c.l;cur.c=c.c;cur.v+=c.v;}
+    }
+    if(cur){delete cur._b;out.push(cur);}return out;
+  }
+  return{h1:h1Bars,h4:agg(h1Bars,14400000),d1:agg(h1Bars,86400000),w1:agg(h1Bars,604800000)};
 }
 
 function genHist(years,tf){
@@ -2045,22 +2119,133 @@ function btQuality(slice,bosBull,bosBear,bullSD,bearSD,sp){
   return{total:total,pct:Math.round(pct2),grade:pct2>=62?'high':pct2>=40?'medium':'low'};
 }
 
-function runSim(candles,cfg){
-  var sp=STYLE_P[cfg.style]||STYLE_P.intraday;
-  var trades=[],equity=[cfg.cap];
-  var capital=cfg.cap,inTrade=false,tSide='',tEntry=0,tSL=0,tTP1=0,tTP2=0,tTP3=0,tOpen=null,tQuality='low'; /* BUG-08 FIX */
-  var tp1Hit=false,tp2Hit=false,tp1Rem=1.0;
-  var tPosSizeEth=0,riskUSDTBase=0,slDistBase=1; /* FIX-5: position tracking */
-  var totalFees=0,totalFunding=0,skippedLowQ=0;
-  var N=candles.length;
-  var candleMs=N>1?candles[1].t-candles[0].t:3600000;
+function runSim(mtf,cfg){
+  /* mtf = {h1, h4, d1, w1} from genHistMultiTF(). Legacy array also accepted. */
+  var isLegacy=Array.isArray(mtf);
+  var c4h=isLegacy?mtf:(mtf.h4||[]);
+  var c1h=isLegacy?mtf:(mtf.h1||[]);
+  var c1d=isLegacy?mtf:(mtf.d1||[]);
+  var c1w=isLegacy?mtf:(mtf.w1||[]);
 
+  var sp=STYLE_P[cfg.style]||STYLE_P.intraday;
+  var entryCands=cfg.style==='scalp'?(mtf.h1||c1h):cfg.style==='swing'?(mtf.d1||c1d):c4h;
+
+  var trades=[],equity=[cfg.cap];
+  var capital=cfg.cap,inTrade=false,tSide='',tEntry=0,tSL=0,tTP1=0,tTP2=0,tTP3=0,tOpen=null,tQuality='low';
+  var tp1Hit=false,tp2Hit=false,tp1Rem=1.0;
+  var tPosSizeEth=0,riskUSDTBase=0,slDistBase=1;
+  var totalFees=0,totalFunding=0,skippedLowQ=0,skippedCascade=0;
+  var tMacroBias='NEUTRAL',tMacroStr=0,tH4Conflict=false;
+  var N=entryCands.length;
+  var candleMs=N>1?entryCands[1].t-entryCands[0].t:14400000;
+
+  /* ─── TOP-DOWN CASCADE HELPERS ─── */
+  function btTrend(c,lb,sb){
+    if(!c||c.length<3)return'NEUTRAL';
+    var n=c.length,rc=c[n-1].c;
+    var la=c[Math.max(0,n-lb)].o,sa=c[Math.max(0,n-sb)].o;
+    var ld=rc>la?'BULL':'BEAR',sd=rc>sa?'BULL':'BEAR';
+    return ld===sd?ld:'NEUTRAL';
+  }
+  function btSwing(c,sw){
+    sw=sw||3;if(!c||c.length<sw*2+2)return'NEUTRAL';
+    var n=c.length,highs=[],lows=[];
+    for(var i=sw;i<n-sw;i++){
+      var isH=true,isL=true;
+      for(var j=1;j<=sw;j++){
+        if(c[i].h<=c[i-j].h||c[i].h<=c[i+j].h)isH=false;
+        if(c[i].l>=c[i-j].l||c[i].l>=c[i+j].l)isL=false;
+      }
+      if(isH)highs.push(c[i].h);if(isL)lows.push(c[i].l);
+    }
+    if(highs.length<2||lows.length<2)return'NEUTRAL';
+    var lH=highs[highs.length-1],pH=highs[highs.length-2];
+    var lL=lows[lows.length-1],pL=lows[lows.length-2];
+    if(lH>pH&&lL>pL)return'BULL';if(lH<pH&&lL<pL)return'BEAR';return'NEUTRAL';
+  }
+  function btEMA(c,p){
+    if(!c||c.length<2)return c&&c.length?c[c.length-1].c:0;
+    var k=2/(p+1),v=c[0].c;for(var i=1;i<c.length;i++)v=c[i].c*k+v*(1-k);return v;
+  }
+  function btBOS(c,lb,prev){
+    lb=lb||5;prev=prev||10;if(!c||c.length<lb+prev)return{bull:false,bear:false};
+    var n=c.length;
+    var rh=aMax(c.slice(-lb).map(function(x){return x.h;}));
+    var rl=aMin(c.slice(-lb).map(function(x){return x.l;}));
+    var ph=aMax(c.slice(-(lb+prev),-lb).map(function(x){return x.h;}));
+    var pl=aMin(c.slice(-(lb+prev),-lb).map(function(x){return x.l;}));
+    var last=c[n-1],prev2=c[n-2]||c[n-1];
+    return{bull:rh>ph&&last.c>ph&&prev2.c>ph,bear:rl<pl&&last.c<pl&&prev2.c<pl};
+  }
+
+  /* Map entry-candle timestamp → nearest index in a higher-TF array */
+  function nearestIdx(c,ts){
+    if(!c||!c.length)return-1;
+    var idx=c.length-1;
+    for(var k=0;k<c.length;k++){if(c[k].t>=ts){idx=Math.max(0,k-1);break;}}
+    return idx;
+  }
+
+  /* Compute top-down cascade at a given bar position */
+  function getTopDown(i){
+    var ts=entryCands[i].t,cp=entryCands[i].c;
+    var wi=nearestIdx(c1w,ts),di=nearestIdx(c1d,ts),h4i=nearestIdx(c4h,ts);
+
+    /* Yearly — from weekly */
+    var wAll=wi>=1?c1w.slice(0,wi+1):c1w;
+    var yrT=btTrend(wAll,Math.min(52,wAll.length-1),Math.min(12,wAll.length-1));
+    var yrE=btEMA(wAll.slice(-Math.min(50,wAll.length)),Math.min(50,wAll.length));
+    var yrB=yrT==='BULL'&&cp>yrE?'BULL':yrT==='BEAR'&&cp<yrE?'BEAR':yrT!=='NEUTRAL'?yrT:'NEUTRAL';
+
+    /* Weekly */
+    var wSl=wi>=1?c1w.slice(Math.max(0,wi-25),wi+1):wAll;
+    var wkT=btTrend(wSl,wSl.length-1,Math.min(8,wSl.length-1));
+    var wkE=btEMA(wSl,Math.min(20,wSl.length));
+    var wkB=wkT==='BULL'&&cp>wkE?'BULL':wkT==='BEAR'&&cp<wkE?'BEAR':wkT!=='NEUTRAL'?wkT:'NEUTRAL';
+
+    /* Daily */
+    var dSl=di>=3?c1d.slice(Math.max(0,di-59),di+1):c1d.slice(0,Math.max(2,di+1));
+    var dT=btTrend(dSl,dSl.length-1,Math.min(20,dSl.length-1));
+    var dE=btEMA(dSl.slice(-Math.min(21,dSl.length)),Math.min(21,dSl.length));
+    var dBOS=btBOS(dSl,5,15);
+    var dB;
+    if(dT==='BULL'&&cp>dE)dB='BULL';
+    else if(dT==='BEAR'&&cp<dE)dB='BEAR';
+    else if(dBOS.bull)dB='BULL';
+    else if(dBOS.bear)dB='BEAR';
+    else dB=btSwing(dSl,3)!=='NEUTRAL'?btSwing(dSl,3):dT;
+
+    /* 4H */
+    var h4Sl=h4i>=3?c4h.slice(Math.max(0,h4i-49),h4i+1):c4h.slice(0,Math.max(2,h4i+1));
+    var h4T=btTrend(h4Sl,h4Sl.length-1,Math.min(20,h4Sl.length-1));
+    var h4BOS=btBOS(h4Sl,5,10);
+    var h4B=h4BOS.bull&&h4T==='BULL'?'BULL':h4BOS.bear&&h4T==='BEAR'?'BEAR':h4T!=='NEUTRAL'?h4T:'NEUTRAL';
+
+    /* Cascade resolution */
+    var fin='NEUTRAL';
+    if(yrB==='BULL')fin=(wkB!=='BEAR'&&dB!=='BEAR')?'BULL':'NEUTRAL';
+    else if(yrB==='BEAR')fin=(wkB!=='BULL'&&dB!=='BULL')?'BEAR':'NEUTRAL';
+    else{if(wkB===dB&&wkB!=='NEUTRAL')fin=wkB;else if(wkB!=='NEUTRAL')fin=wkB;else fin=dB;}
+
+    /* Strength */
+    var str=0;
+    if(yrB===fin)str+=35;if(wkB===fin)str+=25;if(dB===fin)str+=25;if(h4B===fin)str+=15;
+    var h4C=(fin==='BULL'&&h4B==='BEAR')||(fin==='BEAR'&&h4B==='BULL');
+    if(h4C)str=Math.floor(str*0.55);
+    return{bias:fin,strength:Math.min(100,str),h4Conflict:h4C,yrB:yrB,wkB:wkB,dB:dB,h4B:h4B};
+  }
+
+  /* Cache cascade — recompute every 20 bars */
+  var TD_CACHE=20,tdCache=null,tdAt=-999;
+
+  /* ─── MAIN LOOP ─── */
   for(var i=20;i<N-2;i++){
-    var c=candles[i],next=candles[i+1];
+    var c=entryCands[i],next=entryCands[i+1];
+
     if(inTrade){
       var barsHeld=Math.round((c.t-tOpen)/candleMs)||1;
-      var fundingPeriods=Math.max(0,Math.floor(barsHeld*candleMs/28800000)); /* 8h periods */
-      var fundCost=fundingPeriods*cfg.funding*capital*(cfg.risk/100)*0.5;
+      var fundPeriods=Math.max(0,Math.floor(barsHeld*candleMs/28800000));
+      var fundCost=fundPeriods*cfg.funding*capital*(cfg.risk/100)*0.5;
       var maxHold=barsHeld>sp.holdBars*3;
       var hitSL=tSide==='long'?next.l<=tSL:next.h>=tSL;
       var hitTP3=tSide==='long'?next.h>=tTP3:next.l<=tTP3;
@@ -2069,110 +2254,99 @@ function runSim(candles,cfg){
 
       if(!tp1Hit&&hitTP1&&!hitSL){
         tp1Hit=true;
-        /* v5.1: Correct position-size P&L + BREAKEVEN SL after TP1 */
-        var ef=(cfg.tp1/100);
+        var ef=cfg.tp1/100;
         var tp1Move=tSide==='long'?(tTP1-tEntry):(tEntry-tTP1);
-        var gain1=tPosSizeEth*ef*tp1Move;
-        var fee1=tPosSizeEth*ef*tTP1*cfg.taker;
-        capital+=gain1-fee1; totalFees+=fee1; tp1Rem=1-ef;
-        /* BREAKEVEN SL — move stop to entry after TP1 hit */
-        tSL=tEntry;
-        equity.push(Math.round(capital*100)/100);
+        capital+=tPosSizeEth*ef*tp1Move-tPosSizeEth*ef*tTP1*cfg.taker;
+        totalFees+=tPosSizeEth*ef*tTP1*cfg.taker;
+        tp1Rem=1-ef;tSL=tEntry;equity.push(Math.round(capital*100)/100);
       }
       if(tp1Hit&&!tp2Hit&&hitTP2&&!hitSL){
         tp2Hit=true;
-        /* v5.1: TP2 P&L on remaining position */
-        var ef2=(cfg.tp2/100);
-        var remEth2=tPosSizeEth*tp1Rem;
+        var ef2=cfg.tp2/100,remEth2=tPosSizeEth*tp1Rem;
         var tp2Move=tSide==='long'?(tTP2-tEntry):(tEntry-tTP2);
-        var gain2=remEth2*ef2*tp2Move;
-        var fee2=remEth2*ef2*tTP2*cfg.taker;
-        capital+=gain2-fee2; totalFees+=fee2;
-        equity.push(Math.round(capital*100)/100);
+        capital+=remEth2*ef2*tp2Move-remEth2*ef2*tTP2*cfg.taker;
+        totalFees+=remEth2*ef2*tTP2*cfg.taker;equity.push(Math.round(capital*100)/100);
       }
       var exitPrice=null,result='',tpTag='',pnlPct=0;
-      if(hitSL){
-        exitPrice=tSL;
-        /* v5.1: If SL hit AFTER TP1 (at breakeven), count as partial win — TP1 profit already booked */
-        if(tp1Hit){result='win';tpTag='BE';}  /* Breakeven = partial win */
-        else{result='loss';tpTag='SL';}        /* True loss = SL before TP1 */
-      }
+      if(hitSL){exitPrice=tSL;result=tp1Hit?'win':'loss';tpTag=tp1Hit?'BE':'SL';}
       else if((hitTP3||maxHold)&&tp1Hit&&tp2Hit){exitPrice=hitTP3?tTP3:c.c;result='win';tpTag=hitTP3?'TP3':'MAX';}
       else if(hitTP2&&tp1Hit&&!tp2Hit){exitPrice=tTP2;result='win';tpTag='TP2-F';}
       else if(hitTP1&&!tp1Hit){exitPrice=tTP1;result='win';tpTag='TP1-F';}
       if(exitPrice!==null){
-        /* FIX-3+4: Correct final exit P&L and single fundCost charge */
         pnlPct=tSide==='long'?(exitPrice-tEntry)/tEntry*100:(tEntry-exitPrice)/tEntry*100;
-        /* Remaining ETH position (after partial closes) */
         var remFrac=tp2Hit?(cfg.tp3/100):tp1Hit?((cfg.tp2+cfg.tp3)/100):1;
         var posEthF=(tPosSizeEth||riskUSDTBase/slDistBase)*remFrac;
         var finalMove=tSide==='long'?(exitPrice-tEntry):(tEntry-exitPrice);
         var pnlAmt=result==='win'?(posEthF*finalMove):(-riskUSDTBase*remFrac);
-        /* Fee: taker on close only (open fee charged at entry via feeOpen at signal) */
         var feeClose=posEthF*exitPrice*cfg.taker;
-        /* FIX-4: fundCost charged ONCE here (not /3 three times) */
         totalFees+=feeClose;totalFunding+=fundCost;
         capital=Math.max(0,capital+pnlAmt-feeClose-fundCost);
         equity.push(Math.round(capital*100)/100);
-        var slPF2=Math.abs(tEntry-tSL)/tEntry*100||0.5; /* FIX: use tEntry/tSL */
+        var slPF2=Math.abs(tEntry-tSL)/tEntry*100||0.5;
         var rr2=slPF2>0?Math.abs(pnlPct)/slPF2:0;
-        trades.push({date:new Date(tOpen).toLocaleDateString(),type:tSide,entry:tEntry.toFixed(2),exit:exitPrice.toFixed(2),sl:tSL.toFixed(2),tpTag:tpTag,pnlPct:pnlPct.toFixed(2),rr:rr2.toFixed(1),result:result,tp1Hit:tp1Hit,tp2Hit:tp2Hit,fees:feeClose.toFixed(4),funding:fundCost.toFixed(4),reason:btReason(cfg.strat),quality:tQuality||'medium'});
+        trades.push({
+          date:new Date(tOpen).toLocaleDateString(),type:tSide,
+          entry:tEntry.toFixed(2),exit:exitPrice.toFixed(2),sl:tSL.toFixed(2),
+          tpTag:tpTag,pnlPct:pnlPct.toFixed(2),rr:rr2.toFixed(1),result:result,
+          tp1Hit:tp1Hit,tp2Hit:tp2Hit,fees:feeClose.toFixed(4),funding:fundCost.toFixed(4),
+          reason:btReason(cfg.strat),quality:tQuality||'medium',
+          macroBias:tMacroBias,macroStr:tMacroStr,h4Conflict:tH4Conflict
+        });
         inTrade=false;tp1Hit=false;tp2Hit=false;tp1Rem=1.0;
       }
     }
 
     if(!inTrade){
-      /* v5.1 PRECISION SIGNAL ENGINE — replaces inline scoring */
-      var slice2=candles.slice(Math.max(0,i-60),i+1);
-      var n2=slice2.length; if(n2<25){continue;}
-      var cp=slice2[n2-1].c;
-      var score2=0;
+      /* Refresh cascade cache */
+      if(i-tdAt>=TD_CACHE||!tdCache){tdCache=getTopDown(i);tdAt=i;}
+      var td=tdCache;
+      var macroDir=td.bias,macroStr=td.strength,h4Conf=td.h4Conflict;
 
-      /* Factor 1: 2-bar confirmed BOS (0-25) */
-      var hs2=slice2.slice(-20).map(function(x){return x.h});
-      var ls2=slice2.slice(-20).map(function(x){return x.l});
+      /* BOS detection */
+      var slice2=entryCands.slice(Math.max(0,i-60),i+1);
+      var n2=slice2.length;if(n2<25)continue;
+      var cp=slice2[n2-1].c;
+      var hs2=slice2.slice(-20).map(function(x){return x.h;});
+      var ls2=slice2.slice(-20).map(function(x){return x.l;});
       var rH2=aMax(hs2.slice(-5)),rL2=aMin(ls2.slice(-5));
       var pH2=aMax(hs2.slice(-15,-5)),pL2=aMin(ls2.slice(-15,-5));
-      var bosL2=false,bosS2=false;
+      var bosL2=false,bosS2=false,score2=0;
       if(rH2>pH2&&slice2[n2-1].c>pH2&&slice2[n2-2].c>pH2){bosL2=true;score2+=22;}
       else if(rH2>pH2&&slice2[n2-1].c>pH2){bosL2=true;score2+=14;}
       if(rL2<pL2&&slice2[n2-1].c<pL2&&slice2[n2-2].c<pL2){bosS2=true;score2+=22;}
       else if(rL2<pL2&&slice2[n2-1].c<pL2){bosS2=true;score2+=14;}
       if(!bosL2&&!bosS2)continue;
       var side2=bosL2&&!bosS2?'long':bosS2&&!bosL2?'short':null;
-      if(!side2)continue; /* conflicting BOS */
+      if(!side2)continue;
 
-      /* Factor 2: HTF Trend Alignment (0-20) — penalise counter-trend */
-      var htfB2=slice2[n2-1].c>slice2[Math.max(0,n2-35)].c;
-      var htfBr2=slice2[n2-1].c<slice2[Math.max(0,n2-35)].c;
-      if(side2==='long'&&htfB2)score2+=20;
-      else if(side2==='long'&&!htfBr2)score2+=8;
-      else if(side2==='long'&&htfBr2)score2-=15; /* counter-trend penalty */
-      if(side2==='short'&&htfBr2)score2+=20;
-      else if(side2==='short'&&!htfB2)score2+=8;
-      else if(side2==='short'&&htfB2)score2-=15;
-      if(score2<0)continue; /* reject heavily counter-trend */
+      /* ══ CASCADE GATE ══ */
+      var macroAligns=(macroDir==='BULL'&&side2==='long')||(macroDir==='BEAR'&&side2==='short');
+      var macroOpposes=(macroDir==='BULL'&&side2==='short')||(macroDir==='BEAR'&&side2==='long');
+      if(macroOpposes&&macroStr>=40){skippedCascade++;continue;} /* hard block */
+      var cascadeBonus=0;
+      if(macroAligns){
+        cascadeBonus=Math.round(macroStr*0.30);
+        if(td.yrB===macroDir&&td.wkB===macroDir&&td.dB===macroDir&&td.h4B===macroDir)cascadeBonus+=10;
+        if(h4Conf)cascadeBonus=Math.floor(cascadeBonus*0.6);
+      }else if(macroOpposes){
+        score2=Math.floor(score2*0.30);cascadeBonus=-15; /* weak macro — penalise */
+      }else{
+        cascadeBonus=-8; /* neutral */
+      }
+      score2+=cascadeBonus;
 
-      /* Factor 3: S/D Zone Proximity (0-20) */
+      /* S/D Zone */
       var sdSc2=0;
       for(var si2=5;si2<n2-3;si2++){
         var bd2=Math.abs(slice2[si2].c-slice2[si2].o),pb2=Math.abs(slice2[si2-1].c-slice2[si2-1].o);
         var rng2b=slice2[si2].h-slice2[si2].l||0.001;
         if(bd2/rng2b<0.55||bd2<pb2*1.3)continue;
-        if(slice2[si2].c>slice2[si2].o&&side2==='long'){
-          var dd=Math.abs(cp-slice2[si2].o)/cp;
-          if(dd<0.01)sdSc2=Math.max(sdSc2,20);
-          else if(dd<0.025)sdSc2=Math.max(sdSc2,12);
-        }
-        if(slice2[si2].c<slice2[si2].o&&side2==='short'){
-          var dd2=Math.abs(cp-slice2[si2].c)/cp;
-          if(dd2<0.01)sdSc2=Math.max(sdSc2,20);
-          else if(dd2<0.025)sdSc2=Math.max(sdSc2,12);
-        }
+        if(slice2[si2].c>slice2[si2].o&&side2==='long'){var dd=Math.abs(cp-slice2[si2].o)/cp;if(dd<0.01)sdSc2=Math.max(sdSc2,20);else if(dd<0.025)sdSc2=Math.max(sdSc2,12);}
+        if(slice2[si2].c<slice2[si2].o&&side2==='short'){var dd2=Math.abs(cp-slice2[si2].c)/cp;if(dd2<0.01)sdSc2=Math.max(sdSc2,20);else if(dd2<0.025)sdSc2=Math.max(sdSc2,12);}
       }
       score2+=sdSc2;
 
-      /* Factor 4: Candle Trigger (0-20) */
+      /* Candle trigger */
       var lc2=slice2[n2-1],pc2=slice2[n2-2];
       var bdy2=Math.abs(lc2.c-lc2.o),rng2c=lc2.h-lc2.l||0.001;
       var loW2=Math.min(lc2.o,lc2.c)-lc2.l,upW2=lc2.h-Math.max(lc2.o,lc2.c);
@@ -2181,46 +2355,40 @@ function runSim(candles,cfg){
         else if(lc2.c>lc2.o&&loW2>bdy2*1.2)score2+=14;
         else if(lc2.c>lc2.o&&bdy2>Math.abs(pc2.c-pc2.o)*1.3)score2+=16;
         else if(lc2.c>lc2.o&&bdy2/rng2c>0.65)score2+=10;
-        else if(lc2.c>lc2.o)score2+=5;
-        else score2-=8;
+        else if(lc2.c>lc2.o)score2+=5;else score2-=8;
       }else{
         if(lc2.c<lc2.o&&upW2>bdy2*2.0)score2+=20;
         else if(lc2.c<lc2.o&&upW2>bdy2*1.2)score2+=14;
         else if(lc2.c<lc2.o&&bdy2>Math.abs(pc2.c-pc2.o)*1.3)score2+=16;
         else if(lc2.c<lc2.o&&bdy2/rng2c>0.65)score2+=10;
-        else if(lc2.c<lc2.o)score2+=5;
-        else score2-=8;
+        else if(lc2.c<lc2.o)score2+=5;else score2-=8;
       }
 
-      /* Factor 5: Volume Spike (0-10) */
-      var vols2=slice2.slice(-10).map(function(x){return x.v});
-      var avgV2=vols2.slice(0,-1).reduce(function(s,v){return s+v},0)/(vols2.length-1||1);
-      if(lc2.v>avgV2*2.0)score2+=10;
-      else if(lc2.v>avgV2*1.4)score2+=6;
-      else if(lc2.v>avgV2*0.9)score2+=3;
+      /* Volume */
+      var vols2=slice2.slice(-10).map(function(x){return x.v;});
+      var avgV2=vols2.slice(0,-1).reduce(function(s,v){return s+v;},0)/(vols2.length-1||1);
+      if(lc2.v>avgV2*2.0)score2+=10;else if(lc2.v>avgV2*1.4)score2+=6;else if(lc2.v>avgV2*0.9)score2+=3;
 
-      /* Factor 6: Momentum (0-5) */
+      /* Momentum */
       var mom2=slice2[n2-1].c-slice2[Math.max(0,n2-4)].c;
       if((side2==='long'&&mom2>0)||(side2==='short'&&mom2<0))score2+=5;
 
       score2=Math.max(0,Math.min(100,score2));
       tQuality=score2>=65?'high':score2>=45?'medium':'low';
 
-      /* ── ADAPTIVE score gate from S.scoreThresh (updated by autoCalibrate) ── */
-      var _baseThresh=S.scoreThresh[cfg.style]||50;
-      var minScore2=_baseThresh;
-      if(cfg.strat==='bos')minScore2=Math.max(38,_baseThresh-8);
-      else if(cfg.strat==='sdz')minScore2=sdSc2>=12?Math.max(32,_baseThresh-15):_baseThresh;
-      else if(cfg.strat==='elliott')minScore2=Math.max(38,_baseThresh-10);
+      /* Adaptive score gate */
+      var _bt=S.scoreThresh[cfg.style]||50;
+      var minScore2=_bt;
+      if(cfg.strat==='bos')minScore2=Math.max(38,_bt-8);
+      else if(cfg.strat==='sdz')minScore2=sdSc2>=12?Math.max(32,_bt-15):_bt;
+      else if(cfg.strat==='elliott')minScore2=Math.max(38,_bt-10);
       if(score2<minScore2){skippedLowQ++;continue;}
-
-      /* Quality filter (UI setting) — high threshold also adaptive */
       var minQ=cfg.minQuality;
-      var highGate=Math.max(60,_baseThresh+Math.round((_baseThresh-50)*0.3));
-      var passQ=(minQ==='any')||(minQ==='medium'&&score2>=_baseThresh-5)||(minQ==='high'&&score2>=highGate);
+      var highGate=Math.max(60,_bt+Math.round((_bt-50)*0.3));
+      var passQ=(minQ==='any')||(minQ==='medium'&&score2>=_bt-5)||(minQ==='high'&&score2>=highGate);
       if(!passQ){skippedLowQ++;continue;}
 
-      /* ATR-based SL/TP placement */
+      /* ATR */
       var atr2=0,atrN2=Math.min(14,n2-1);
       for(var ak2=n2-atrN2;ak2<n2;ak2++){
         atr2+=Math.max(slice2[ak2].h-slice2[ak2].l,
@@ -2229,38 +2397,40 @@ function runSim(candles,cfg){
       }
       atr2=atr2/(atrN2||1);
 
-      var slM2=sp.slMult, tpM2=sp.tpM;
-      /* Scale ATR-SL to match intended style RR */
+      var slM2=sp.slMult,tpM2=sp.tpM;
+      /* Tighter SL for 4H-conflict trades within macro trend */
+      var slMult2=(h4Conf&&macroAligns)?slM2*0.78:slM2;
       var slDist2=atr2*1.2;
-      var rrRatio1=tpM2[0]/slM2, rrRatio2=tpM2[1]/slM2, rrRatio3=tpM2[2]/slM2;
+      var slip2=cp*0.0002;
+      tMacroBias=macroDir;tMacroStr=macroStr;tH4Conflict=h4Conf;
 
-      var slip2=cp*0.0002; /* 0.02% slippage */
       if(side2==='long'){
-        tEntry=cp+slip2; tSide='long';
-        tSL=tEntry-slDist2;
-        tTP1=tEntry+slDist2*rrRatio1;
-        tTP2=tEntry+slDist2*rrRatio2;
-        tTP3=tEntry+slDist2*rrRatio3;
+        tEntry=cp+slip2;tSide='long';tSL=tEntry-slDist2;
+        tTP1=tEntry+slDist2*(tpM2[0]/slMult2);
+        tTP2=tEntry+slDist2*(tpM2[1]/slMult2);
+        tTP3=tEntry+slDist2*(tpM2[2]/slMult2);
       }else{
-        tEntry=cp-slip2; tSide='short';
-        tSL=tEntry+slDist2;
-        tTP1=tEntry-slDist2*rrRatio1;
-        tTP2=tEntry-slDist2*rrRatio2;
-        tTP3=tEntry-slDist2*rrRatio3;
+        tEntry=cp-slip2;tSide='short';tSL=tEntry+slDist2;
+        tTP1=tEntry-slDist2*(tpM2[0]/slMult2);
+        tTP2=tEntry-slDist2*(tpM2[1]/slMult2);
+        tTP3=tEntry-slDist2*(tpM2[2]/slMult2);
       }
-      tOpen=candles[i].t; inTrade=true;
-
-      /* Store position params at open */
+      tOpen=entryCands[i].t;inTrade=true;
       slDistBase=slDist2||tEntry*0.01;
       riskUSDTBase=capital*(cfg.risk/100);
       tPosSizeEth=riskUSDTBase/slDistBase;
+      /* Position sizing: full for cascade-aligned, reduced for others */
+      if(!macroAligns)tPosSizeEth*=0.30;
+      else if(h4Conf)tPosSizeEth*=0.65;
       var maxEth3=(capital*5)/tEntry;
       if(tPosSizeEth>maxEth3)tPosSizeEth=maxEth3;
-      var openFee3=tPosSizeEth*tEntry*cfg.taker;
-      capital-=openFee3; totalFees+=openFee3;
+      capital-=tPosSizeEth*tEntry*cfg.taker;
+      totalFees+=tPosSizeEth*tEntry*cfg.taker;
     }
   }
-  return analyze(trades,equity,cfg,totalFees,totalFunding,skippedLowQ);
+  var r=analyze(trades,equity,cfg,totalFees,totalFunding,skippedLowQ);
+  r.skippedCascade=skippedCascade;
+  return r;
 }
 
 var _btRC=0;function btReason(s){var m={smc:['BOS+S/D','CHoCH+OB','FVG+BOS','Demand+EW'],sdz:['Demand Zone','Supply Zone'],bos:['BOS','CHoCH Break'],elliott:['Wave 3','EW+Fib']};var o=m[s]||m.smc;return o[(_btRC++)%o.length];}
@@ -2310,6 +2480,22 @@ function autoCalibrate(r,cfg){
   var pf=parseFloat(r.pf)||1;
   var tot=r.trades.length;
 
+  /* ── Top-down cascade breakdown for calibration ── */
+  var alignedT=r.trades.filter(function(t){
+    return t.macroBias&&t.macroBias!=='NEUTRAL'&&
+      ((t.type==='long'&&t.macroBias==='BULL')||(t.type==='short'&&t.macroBias==='BEAR'));});
+  var counterT=r.trades.filter(function(t){
+    return t.macroBias&&t.macroBias!=='NEUTRAL'&&
+      ((t.type==='long'&&t.macroBias==='BEAR')||(t.type==='short'&&t.macroBias==='BULL'));});
+  var h4ConfT=r.trades.filter(function(t){return t.h4Conflict;});
+  var alignedWR=alignedT.length?(alignedT.filter(function(t){return t.result==='win';}).length/alignedT.length*100):0;
+  var counterWR=counterT.length?(counterT.filter(function(t){return t.result==='win';}).length/counterT.length*100):0;
+  var cascadeStats={
+    aligned:alignedT.length,alignedWR:alignedWR.toFixed(1),
+    counter:counterT.length,counterWR:counterWR.toFixed(1),
+    h4Conflict:h4ConfT.length,skippedCascade:r.skippedCascade||0
+  };
+
   /* ── 1. Derive TP multiples from actual trade move sizes ── */
   /* Compute avg absolute P&L% for TP1/TP2/TP3 winners */
   var tp1Wins=wins.filter(function(t){return t.tp1Hit&&!t.tp2Hit;});
@@ -2358,14 +2544,24 @@ function autoCalibrate(r,cfg){
   newTP2=clamp(newTP2,rng.tp2[0],rng.tp2[1]);
   newTP3=clamp(newTP3,rng.tp3[0],rng.tp3[1]);
 
-  /* ── 2. Score threshold adaptation ── */
-  /* Target: WR >= 62%. If below, raise threshold. If well above, lower slightly. */
+  /* ── 2. Score threshold adaptation (cascade-aware) ── */
   var curThresh=S.scoreThresh[style]||50;
   var newThresh=curThresh;
-  if(wr<55){newThresh=Math.min(curThresh+5,72);}       /* too many losers → tighten */
-  else if(wr<60){newThresh=Math.min(curThresh+3,70);}  /* below target → tighten */
-  else if(wr>=70&&pf>=2.0){newThresh=Math.max(curThresh-3,40);} /* outperforming → relax for more trades */
-  else if(wr>=65&&pf>=1.6){newThresh=Math.max(curThresh-1,42);} /* slightly relax */
+  if(wr<55){newThresh=Math.min(curThresh+5,72);}
+  else if(wr<60){newThresh=Math.min(curThresh+3,70);}
+  else if(wr>=70&&pf>=2.0){newThresh=Math.max(curThresh-3,40);}
+  else if(wr>=65&&pf>=1.6){newThresh=Math.max(curThresh-1,42);}
+  /* Cascade alignment refinement:
+     If aligned trades dramatically outperform counter-trend → cascade is working,
+     relax threshold slightly to capture more aligned opportunities.
+     If counter trades drag WR below 55% despite few aligned losses → threshold too lenient. */
+  if(cascadeStats.aligned>=10&&cascadeStats.counter>=5){
+    var wrDiff=alignedWR-counterWR;
+    if(wrDiff>20)newThresh=Math.max(newThresh-3,38);
+    else if(wrDiff>10)newThresh=Math.max(newThresh-1,42);
+    else if(wrDiff<-5)newThresh=Math.min(newThresh+4,72);
+  }
+  if(cascadeStats.skippedCascade>tot*2&&wr>=62)newThresh=Math.max(newThresh-2,42);
 
   /* ── 3. SL adjustment based on PF ── */
   /* If PF<1.2 despite decent WR, SL too wide → tighten; if WR<50 → widen to allow stops */
@@ -2391,7 +2587,8 @@ function autoCalibrate(r,cfg){
     prevTpM:prevTpM, prevSl:prevSl, prevScore:prevScore,
     blendWeight:blendW,
     calibAt:new Date().toISOString(),
-    period:cfg.period, tf:cfg.tf
+    period:cfg.period, tf:cfg.tf,
+    cascadeStats:cascadeStats
   };
   S.calibrated[style]=calib;
 
@@ -2487,7 +2684,22 @@ function renderBTRes(r,cfg,calib){
     +'<div class="fee-bd-row"><span>Medium quality trades</span><span style="color:var(--warn)">'+r.qMed+' ('+((r.qMed/tot)*100).toFixed(0)+'%)</span></div>'
     +'<div class="fee-bd-row"><span>Low quality trades</span><span style="color:var(--red)">'+r.qLow+' ('+((r.qLow/tot)*100).toFixed(0)+'%)</span></div>'
     +'<div class="fee-bd-row"><span>Signals skipped (below threshold)</span><span style="color:var(--text2)">'+r.skipped+'</span></div>'
+    +'<div class="fee-bd-row"><span>Signals blocked (cascade conflict)</span><span style="color:var(--warn)">'+(r.skippedCascade||0)+'</span></div>'
     +'<div class="fee-bd-row"><span>Quality filter setting</span><span style="color:var(--accent)">'+cfg.minQuality+'</span></div>'
+    +'</div>';
+
+  /* Top-down cascade alignment breakdown */
+  var cs=calib&&calib.cascadeStats?calib.cascadeStats:{aligned:0,alignedWR:'—',counter:0,counterWR:'—',h4Conflict:0,skippedCascade:0};
+  var alignTrades=r.trades.filter(function(t){return t.macroBias&&t.macroBias!=='NEUTRAL'&&((t.type==='long'&&t.macroBias==='BULL')||(t.type==='short'&&t.macroBias==='BEAR'));});
+  var counterTrades=r.trades.filter(function(t){return t.macroBias&&t.macroBias!=='NEUTRAL'&&((t.type==='long'&&t.macroBias==='BEAR')||(t.type==='short'&&t.macroBias==='BULL'));});
+  var alignWR=alignTrades.length?(alignTrades.filter(function(t){return t.result==='win';}).length/alignTrades.length*100).toFixed(1):'—';
+  var ctrWR=counterTrades.length?(counterTrades.filter(function(t){return t.result==='win';}).length/counterTrades.length*100).toFixed(1):'—';
+  var cascadeHtml='<div class="fee-bd" style="border-color:rgba(123,94,167,.3)"><div class="fee-bd-title" style="color:var(--accent2)">🌊 Top-Down Cascade Analysis (Yearly→Weekly→Daily→4H)</div>'
+    +'<div class="fee-bd-row"><span>✅ Cascade-aligned trades</span><span style="color:var(--green)">'+alignTrades.length+' trades · WR: '+alignWR+'%</span></div>'
+    +'<div class="fee-bd-row"><span>⚠️ Counter-cascade trades</span><span style="color:var(--warn)">'+counterTrades.length+' trades · WR: '+ctrWR+'% · Size ×0.30</span></div>'
+    +'<div class="fee-bd-row"><span>🔶 4H vs macro conflict (pullbacks)</span><span style="color:var(--gold)">'+(r.trades.filter(function(t){return t.h4Conflict;}).length)+' trades · Size ×0.65</span></div>'
+    +'<div class="fee-bd-row"><span>🚫 Hard-blocked (strong macro oppose)</span><span style="color:var(--red)">'+(r.skippedCascade||0)+' signals skipped</span></div>'
+    +'<div class="fee-bd-row" style="border-top:1px solid rgba(255,255,255,.06);margin-top:4px;padding-top:6px;font-size:.67rem;color:var(--text2)">Rule: macro strength ≥40% + opposite signal = blocked. Aligned = full size + up to +40pts score bonus.</div>'
     +'</div>';
 
   var feeHtml='<div class="fee-bd"><div class="fee-bd-title">💸 Delta Exchange Fee Breakdown (Corrected)</div>'
@@ -2515,7 +2727,7 @@ function renderBTRes(r,cfg,calib){
 
   var calibHtml=calibrationBadge(calib,r);
   var _btResEl=document.getElementById('btRes');if(_btResEl)_btResEl.innerHTML=
-    calibHtml+styleNote+statsHtml+eqHtml+tpHtml+qHtml+feeHtml
+    calibHtml+styleNote+statsHtml+eqHtml+tpHtml+cascadeHtml+qHtml+feeHtml
     +'<div class="tlog"><div class="tlog-hdr"><span>📋 Trade Log (last 60)</span><span style="color:var(--text2)">'+r.trades.length+' total</span></div>'
     +'<div style="overflow-x:auto"><table class="tt"><thead><tr>'
     +'<th>Date</th><th>Type</th><th>Quality</th><th>Entry</th><th>Exit</th><th>SL</th><th>Partials</th><th>TP</th><th>P&amp;L%</th><th>RR</th><th>Fees</th><th>Reason</th><th>Result</th>'

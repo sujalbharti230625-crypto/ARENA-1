@@ -551,6 +551,7 @@ body{
       <div><div class="sec-title swing">Swing Trade Plans</div><div class="sec-sub">Daily–Weekly · Hold 3–21 days · Wide stops · 10–35% targets · Macro structure</div></div>
     </div>
   </div>
+  <div id="swing-td-context"></div>
   <div class="alert danger"><div class="ai">🚨</div><div><strong>Swing Context — Macro Bearish:</strong> ETH in confirmed downtrend $2,383→$1,629 (–32%). Daily bearish. Elliott Wave A→B→C correction. <strong>Swing shorts preferred. Long only from weekly demand $1,200–$1,350.</strong></div></div>
 
   <div class="setup short preferred">
@@ -696,8 +697,12 @@ body{
 var liveData = {
   price: 0, open24: 0, high24: 0, low24: 0, vol24: 0,
   usdt_dom: 8.32, usdt_dom_prev: 8.38,
-  atr: { m15: 0, h1: 0, h4: 0 },
-  candles: { m15: [], h1: [], h4: [], d1: [] },
+  atr: { m15: 0, h1: 0, h4: 0, d1: 0 },
+  candles: { m15: [], h1: [], h4: [], d1: [], w1: [] },
+  /* Top-down bias determined by macro timeframes */
+  topDownBias: 'NEUTRAL',   /* BULL | BEAR | NEUTRAL */
+  topDownStrength: 0,       /* 0-100 */
+  topDownStack: [],         /* per-TF verdict array */
   analysis: null
 };
 
@@ -736,7 +741,7 @@ function fetchTicker() {
 // ── Fetch OHLCV candles ──
 function fetchCandles(tf, limit) {
   limit = limit || 100;
-  var barMap = {'15m':'15m','1h':'1H','4h':'4H','1d':'1D'};
+  var barMap = {'15m':'15m','1h':'1H','4h':'4H','1d':'1D','1w':'1W'};
   var bar = barMap[tf] || '1H';
   return fetch('https://www.okx.com/api/v5/market/candles?instId=ETH-USDT&bar='+bar+'&limit='+limit)
     .then(function(r){ return r.json(); })
@@ -857,10 +862,213 @@ function candlePattern(c) {
 }
 
 // ═══════════════════════════════════════════════════════════
+//  TOP-DOWN BIAS ENGINE
+//  Cascade: Yearly trend → Weekly → Daily → 4H
+//  Rules:
+//   • Higher TF overrides lower TF completely
+//   • ALL macro TFs must agree → only then intraday trades fire
+//   • If macro conflict → NEUTRAL (no intraday signal)
+//   • Bias strength 0-100 drives intraday signal scoring
+// ═══════════════════════════════════════════════════════════
+function calcTopDownBias(cW, c1d, c4h, price) {
+  'use strict';
+
+  /* Helper: trend direction of a candle array */
+  function trendOf(c, longLookback, shortLookback) {
+    if (!c || c.length < 5) return 'NEUTRAL';
+    var n = c.length;
+    var recent = c[n-1].c;
+    /* Long-term: direction from start of array */
+    var longAgo = c[Math.max(0, n-longLookback)].o;
+    /* Short-term: last shortLookback candles */
+    var shortAgo = c[Math.max(0, n-shortLookback)].o;
+    var longDir  = recent > longAgo  ? 'BULL' : 'BEAR';
+    var shortDir = recent > shortAgo ? 'BULL' : 'BEAR';
+    /* Both must agree for a clean trend */
+    if (longDir === shortDir) return longDir;
+    return 'NEUTRAL';  /* conflicting momentum = ranging */
+  }
+
+  /* Helper: EMA approximation for trend filter */
+  function ema(c, period) {
+    if (!c || c.length < period) return c && c.length ? c[c.length-1].c : 0;
+    var k = 2 / (period + 1);
+    var val = c[0].c;
+    for (var i = 1; i < c.length; i++) val = c[i].c * k + val * (1 - k);
+    return val;
+  }
+
+  /* Helper: Higher High / Higher Low (uptrend) or Lower Low / Lower High (downtrend) */
+  function swingStructure(c, sw) {
+    sw = sw || 3;
+    if (!c || c.length < sw*2+2) return 'NEUTRAL';
+    var n = c.length;
+    var highs = [], lows = [];
+    for (var i = sw; i < n-sw; i++) {
+      var isH = true, isL = true;
+      for (var j = 1; j <= sw; j++) {
+        if (c[i].h <= c[i-j].h || c[i].h <= c[i+j].h) isH = false;
+        if (c[i].l >= c[i-j].l || c[i].l >= c[i+j].l) isL = false;
+      }
+      if (isH) highs.push(c[i].h);
+      if (isL)  lows.push(c[i].l);
+    }
+    if (highs.length < 2 || lows.length < 2) return 'NEUTRAL';
+    var lastH = highs[highs.length-1], prevH = highs[highs.length-2];
+    var lastL = lows[lows.length-1],   prevL = lows[lows.length-2];
+    if (lastH > prevH && lastL > prevL) return 'BULL';  /* HH + HL */
+    if (lastH < prevH && lastL < prevL) return 'BEAR';  /* LH + LL */
+    return 'NEUTRAL';
+  }
+
+  var stack = [];  /* per-TF verdict */
+  var scores = {}; /* per-TF score contribution */
+
+  /* ── TIER 1: Yearly bias (from weekly candles, ~52 bars = 1 year) ── */
+  var yearlyBias = 'NEUTRAL';
+  if (cW && cW.length >= 10) {
+    var yrTrend   = trendOf(cW, Math.min(52, cW.length-1), Math.min(12, cW.length-1));
+    var yrStructure = swingStructure(cW, 2);
+    var yrEma50   = ema(cW.slice(-52), 50);
+    var yrAbove   = price > yrEma50;
+    if (yrTrend === 'BULL' && yrStructure !== 'BEAR' && yrAbove)  yearlyBias = 'BULL';
+    else if (yrTrend === 'BEAR' && yrStructure !== 'BULL' && !yrAbove) yearlyBias = 'BEAR';
+    else if (yrTrend !== 'NEUTRAL') yearlyBias = yrTrend; /* trend wins over structure if conflicting */
+    stack.push({ tf:'Yearly', bias:yearlyBias, trend:yrTrend, structure:yrStructure, emaAbove:yrAbove,
+                 note: yearlyBias==='BULL'?'HH+HL · Price>50WMA · Macro uptrend':
+                       yearlyBias==='BEAR'?'LH+LL · Price<50WMA · Macro downtrend':'Consolidation — no yearly edge' });
+  } else {
+    /* Fallback: approximate from daily */
+    if (c1d && c1d.length >= 30) {
+      var d365 = c1d.slice(-Math.min(252, c1d.length));
+      yearlyBias = trendOf(d365, d365.length-1, Math.floor(d365.length/4));
+    }
+    stack.push({ tf:'Yearly', bias:yearlyBias, note:'Approximate (weekly data limited)', trend:yearlyBias });
+  }
+
+  /* ── TIER 2: Weekly bias (last 12 weeks of weekly candles) ── */
+  var weeklyBias = 'NEUTRAL';
+  if (cW && cW.length >= 4) {
+    var wkSlice    = cW.slice(-Math.min(26, cW.length));
+    var wkTrend    = trendOf(wkSlice, wkSlice.length-1, Math.min(8, wkSlice.length-1));
+    var wkStructure = swingStructure(wkSlice, 2);
+    var wkEma20    = ema(wkSlice, Math.min(20, wkSlice.length));
+    var wkAbove    = price > wkEma20;
+    if (wkTrend === 'BULL' && wkAbove)    weeklyBias = 'BULL';
+    else if (wkTrend === 'BEAR' && !wkAbove) weeklyBias = 'BEAR';
+    else weeklyBias = wkStructure !== 'NEUTRAL' ? wkStructure : wkTrend;
+    stack.push({ tf:'Weekly', bias:weeklyBias, trend:wkTrend, structure:wkStructure, emaAbove:wkAbove,
+                 note: weeklyBias==='BULL'?'Weekly close>20WMA · Bull structure':
+                       weeklyBias==='BEAR'?'Weekly close<20WMA · Bear structure':'Weekly ranging — wait for breakout' });
+  } else {
+    stack.push({ tf:'Weekly', bias:yearlyBias, note:'Insufficient weekly data — using yearly', trend:yearlyBias });
+  }
+
+  /* ── TIER 3: Daily bias (last 30 daily candles) ── */
+  var dailyBias = 'NEUTRAL';
+  if (c1d && c1d.length >= 10) {
+    var d30        = c1d.slice(-Math.min(60, c1d.length));
+    var dTrend     = trendOf(d30, d30.length-1, Math.min(20, d30.length-1));
+    var dStructure = swingStructure(d30, 3);
+    var dEma21     = ema(d30.slice(-21), 21);
+    var dAbove     = price > dEma21;
+    var dBOS       = calcBOS(d30, 5, 15);
+    if (dTrend==='BULL' && dAbove && dStructure !== 'BEAR')      dailyBias = 'BULL';
+    else if (dTrend==='BEAR' && !dAbove && dStructure !== 'BULL') dailyBias = 'BEAR';
+    else if (dBOS.bull) dailyBias = 'BULL';
+    else if (dBOS.bear) dailyBias = 'BEAR';
+    else dailyBias = dStructure !== 'NEUTRAL' ? dStructure : dTrend;
+    stack.push({ tf:'Daily', bias:dailyBias, trend:dTrend, structure:dStructure, emaAbove:dAbove, bos:dBOS,
+                 note: dailyBias==='BULL'?'Daily BOS bull · HH/HL · Price>21EMA':
+                       dailyBias==='BEAR'?'Daily BOS bear · LH/LL · Price<21EMA':'Daily indecision — no clean trend' });
+  } else {
+    /* Proxy daily from 4H (last 30 4H candles ≈ 5 days is too short; use whole 4H array) */
+    dailyBias = trendOf(c4h, Math.min(30, c4h.length-1), Math.min(6, c4h.length-1));
+    stack.push({ tf:'Daily', bias:dailyBias, note:'Approximate from 4H (no daily data)', trend:dailyBias });
+  }
+
+  /* ── TIER 4: 4H bias (confirmation layer, NOT the driver) ── */
+  var fourHBias = 'NEUTRAL';
+  if (c4h && c4h.length >= 10) {
+    var h4s      = c4h.slice(-Math.min(50, c4h.length));
+    var h4Trend  = trendOf(h4s, h4s.length-1, Math.min(20, h4s.length-1));
+    var h4Struct = swingStructure(h4s, 3);
+    var h4BOS    = calcBOS(h4s, 5, 10);
+    var h4Ema9   = ema(h4s.slice(-9), 9);
+    var h4Above  = price > h4Ema9;
+    if      (h4BOS.bull && h4Trend==='BULL') fourHBias = 'BULL';
+    else if (h4BOS.bear && h4Trend==='BEAR') fourHBias = 'BEAR';
+    else if (h4Trend !== 'NEUTRAL')          fourHBias = h4Trend;
+    else                                     fourHBias = h4Struct;
+    stack.push({ tf:'4H', bias:fourHBias, trend:h4Trend, structure:h4Struct, bos:h4BOS, emaAbove:h4Above,
+                 note: fourHBias==='BULL'?'4H BOS bull · Momentum confirms':
+                       fourHBias==='BEAR'?'4H BOS bear · Momentum confirms':'4H ranging — low conviction' });
+  }
+
+  /* ══════════════════════════════════════════════════════════
+     CASCADED BIAS RESOLUTION
+     Rules (in strict order):
+     1. If Yearly = BEAR → max bias = BEAR (no longs unless Y=BULL)
+     2. Weekly must NOT contradict Yearly
+     3. Daily must NOT contradict Weekly
+     4. 4H is the final intraday gate — must agree with Daily
+     5. Count how many TFs agree → strength score
+     ══════════════════════════════════════════════════════════ */
+  var biases = [yearlyBias, weeklyBias, dailyBias, fourHBias];
+  var bullCount = biases.filter(function(b){ return b==='BULL'; }).length;
+  var bearCount = biases.filter(function(b){ return b==='BEAR'; }).length;
+
+  var finalBias = 'NEUTRAL';
+
+  /* Rule 1: Yearly is the master — macro dictates allowed direction */
+  if (yearlyBias === 'BULL') {
+    /* Only allow LONG if Weekly+Daily also support */
+    if (weeklyBias !== 'BEAR' && dailyBias !== 'BEAR') finalBias = 'BULL';
+    else if (weeklyBias === 'BEAR' || dailyBias === 'BEAR') finalBias = 'NEUTRAL'; /* macro conflict */
+  } else if (yearlyBias === 'BEAR') {
+    /* Only allow SHORT if Weekly+Daily also support */
+    if (weeklyBias !== 'BULL' && dailyBias !== 'BULL') finalBias = 'BEAR';
+    else if (weeklyBias === 'BULL' || dailyBias === 'BULL') finalBias = 'NEUTRAL'; /* corrective bounce */
+  } else {
+    /* Yearly neutral — Weekly takes over */
+    if (weeklyBias === dailyBias && weeklyBias !== 'NEUTRAL') finalBias = weeklyBias;
+    else if (weeklyBias !== 'NEUTRAL') finalBias = weeklyBias;
+    else finalBias = dailyBias;
+  }
+
+  /* Rule 2: 4H must agree with final bias for intraday trades to fire */
+  var fourHConflict = (finalBias === 'BULL' && fourHBias === 'BEAR') ||
+                      (finalBias === 'BEAR' && fourHBias === 'BULL');
+  /* 4H conflict doesn't kill the bias but massively reduces strength */
+
+  /* Strength: each agreeing TF adds weight (higher TF = more weight) */
+  var strength = 0;
+  if (yearlyBias === finalBias)  strength += 35;
+  if (weeklyBias === finalBias)  strength += 25;
+  if (dailyBias  === finalBias)  strength += 25;
+  if (fourHBias  === finalBias)  strength += 15;
+  if (fourHConflict)             strength  = Math.floor(strength * 0.55); /* 4H vs macro = low conviction */
+  strength = Math.min(100, Math.max(0, strength));
+
+  return {
+    bias:       finalBias,    /* BULL | BEAR | NEUTRAL */
+    strength:   strength,     /* 0-100 */
+    stack:      stack,        /* per-TF details for UI */
+    yearlyBias: yearlyBias,
+    weeklyBias: weeklyBias,
+    dailyBias:  dailyBias,
+    fourHBias:  fourHBias,
+    fourHConflict: fourHConflict,
+    bullCount:  bullCount,
+    bearCount:  bearCount
+  };
+}
+
+// ═══════════════════════════════════════════════════════════
 //  STRICT MULTI-CONFLUENCE SIGNAL ENGINE
 //  8 factors scored 0-100, threshold = 60 to generate signal
 // ═══════════════════════════════════════════════════════════
-function runStrictAnalysis(candles4h, candles1h, candles15m, price) {
+function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
   if (!candles4h.length || !candles1h.length || !candles15m.length) return null;
 
   var n4 = candles4h.length, n1 = candles1h.length, n15 = candles15m.length;
@@ -871,11 +1079,17 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price) {
   var atr15  = calcATR(candles15m, 14);
   liveData.atr = {m15:atr15, h1:atr1h, h4:atr4h};
 
-  // Trends
-  var trend4h = candles4h[n4-1].c > candles4h[0].o ? 'BULL' : 'BEAR';
-  var trend1d  = candles4h[n4-1].c > candles4h[Math.max(0,n4-60)].o ? 'BULL' : 'BEAR'; // proxy daily
-  var trend1h  = candles1h[n1-1].c > candles1h[0].o ? 'BULL' : 'BEAR';
-  var trend15  = candles15m[n15-1].c > candles15m[0].o ? 'BULL' : 'BEAR';
+  // Trends — use top-down engine results where available
+  topDown = topDown || { bias:'NEUTRAL', strength:0, stack:[], yearlyBias:'NEUTRAL',
+                         weeklyBias:'NEUTRAL', dailyBias:'NEUTRAL', fourHBias:'NEUTRAL',
+                         fourHConflict:false, bullCount:0, bearCount:0 };
+  var trend4h = topDown.fourHBias  !== 'NEUTRAL' ? topDown.fourHBias
+              : (candles4h[n4-1].c > candles4h[Math.max(0,n4-20)].o ? 'BULL' : 'BEAR');
+  var trend1d  = topDown.dailyBias !== 'NEUTRAL' ? topDown.dailyBias
+              : (candles4h[n4-1].c > candles4h[Math.max(0,n4-60)].o ? 'BULL' : 'BEAR');
+  var trend1h  = candles1h[n1-1].c > candles1h[Math.max(0,n1-24)].o ? 'BULL' : 'BEAR';
+  var trend15  = candles15m[n15-1].c > candles15m[Math.max(0,n15-12)].o ? 'BULL' : 'BEAR';
+  var macroDir = topDown.bias; /* BULL | BEAR | NEUTRAL — the master gate */
 
   // BOS (strict 2-bar)
   var bos4h  = calcBOS(candles4h, 5, 10);
@@ -908,14 +1122,51 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price) {
   var shortScore = 0, longScore = 0;
   var shortFactors = [], longFactors = [];
 
-  // Factor 1: HTF Trend (Daily proxy + 4H) — CRITICAL
-  var htfBear = trend4h === 'BEAR' && trend1d === 'BEAR';
-  var htfBull = trend4h === 'BULL' && trend1d === 'BULL';
-  if (htfBear) { shortScore += 25; shortFactors.push({label:'HTF Bear (4H+Daily both bearish)', score:25, type:'key'}); }
-  if (htfBull) { longScore  += 25; longFactors.push({label:'HTF Bull (4H+Daily both bullish)', score:25, type:'key'}); }
-  // LTF divergence penalty — if LTF goes against HTF
-  if (htfBear && trend1h==='BULL') { shortScore -= 8; shortFactors.push({label:'LTF (1H) diverges bull — caution', score:-8, type:'warn'}); }
-  if (htfBull && trend1h==='BEAR') { longScore  -= 8; longFactors.push({label:'LTF (1H) diverges bear — caution', score:-8, type:'warn'}); }
+  // Factor 1: TOP-DOWN CASCADE (Yearly→Weekly→Daily→4H) — MASTER FACTOR
+  // Macro bias dominates — intraday trades ONLY allowed in macro direction
+  var htfBear = macroDir === 'BEAR';
+  var htfBull = macroDir === 'BULL';
+  var tdStr   = topDown.strength || 0; // 0-100 strength
+  var tdLabel = topDown.yearlyBias+' Yr / '+topDown.weeklyBias+' Wk / '+topDown.dailyBias+' D / '+topDown.fourHBias+' 4H';
+
+  if (htfBear) {
+    // Score scales with strength: full stack = +35pts, partial = less
+    var macroScore = Math.round(25 + (tdStr/100)*10);
+    shortScore += macroScore;
+    shortFactors.push({label:'Macro BEAR cascade ['+tdLabel+'] strength:'+tdStr+'%', score:macroScore, type:'key'});
+    // Counter-trend long: HARD BLOCK if macro bear
+    longScore  = Math.floor(longScore * 0.25); // crush long score — only sub-50pts allowed
+    longFactors.push({label:'MACRO BEAR — long against cascade (position-size ×0.25)', score:0, type:'warn'});
+  } else if (htfBull) {
+    var macroScoreB = Math.round(25 + (tdStr/100)*10);
+    longScore  += macroScoreB;
+    longFactors.push({label:'Macro BULL cascade ['+tdLabel+'] strength:'+tdStr+'%', score:macroScoreB, type:'key'});
+    shortScore = Math.floor(shortScore * 0.25);
+    shortFactors.push({label:'MACRO BULL — short against cascade (position-size ×0.25)', score:0, type:'warn'});
+  } else {
+    // NEUTRAL macro — both directions devalued, require very strong intraday confluence
+    shortScore -= 10; longScore -= 10;
+    shortFactors.push({label:'Macro NEUTRAL ['+tdLabel+'] — no clear bias', score:-10, type:'warn'});
+    longFactors.push({label:'Macro NEUTRAL ['+tdLabel+'] — no clear bias', score:-10, type:'warn'});
+  }
+
+  // 4H conflicts with Daily/Weekly: signals 1H pullback inside larger trend — reduce weighting
+  if (topDown.fourHConflict) {
+    shortScore -= 8; longScore -= 8;
+    shortFactors.push({label:'4H diverges from Daily/Weekly (counter-trend 4H move)', score:-8, type:'warn'});
+    longFactors.push({label:'4H diverges from Daily/Weekly (counter-trend 4H move)', score:-8, type:'warn'});
+  }
+
+  // 1H divergence from 4H: acceptable (pullback) but flag it
+  var htfTrendFor1H = topDown.fourHBias !== 'NEUTRAL' ? topDown.fourHBias : trend4h;
+  if (htfBear && trend1h==='BULL') {
+    shortScore -= 6;
+    shortFactors.push({label:'1H bouncing against 4H bear (pullback — tighter SL required)', score:-6, type:'warn'});
+  }
+  if (htfBull && trend1h==='BEAR') {
+    longScore  -= 6;
+    longFactors.push({label:'1H dipping against 4H bull (pullback — tighter SL required)', score:-6, type:'warn'});
+  }
 
   // Factor 2: Confirmed BOS (strict 2-bar close) — HIGH WEIGHT
   if (bos4h.bear) { shortScore += 22; shortFactors.push({label:'4H BOS Bear: 2-bar confirmed close', score:22, type:'key'}); }
@@ -986,11 +1237,26 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price) {
   else if (volRatio4h > 1.0) { shortScore += 5; longScore += 5; }
   else { shortScore -= 5; longScore -= 5; shortFactors.push({label:'Low volume '+volRatio4h.toFixed(2)+'x (weak conviction)', score:-5, type:'warn'}); longFactors.push({label:'Low volume '+volRatio4h.toFixed(2)+'x (weak conviction)', score:-5, type:'warn'}); }
 
-  // Factor 8: Multi-TF alignment bonus (all TFs agree)
-  var allBear = trend4h==='BEAR' && trend1h==='BEAR' && trend15==='BEAR';
-  var allBull = trend4h==='BULL' && trend1h==='BULL' && trend15==='BULL';
-  if (allBear) { shortScore += 10; shortFactors.push({label:'All 3 TFs bearish (full alignment)', score:10, type:'key'}); }
-  if (allBull) { longScore  += 10; longFactors.push({label:'All 3 TFs bullish (full alignment)', score:10, type:'key'}); }
+  // Factor 8: Full-stack alignment bonus (Weekly→4H→1H→15m all agree)
+  var allBear = topDown.weeklyBias==='BEAR' && topDown.fourHBias==='BEAR' && trend1h==='BEAR' && trend15==='BEAR';
+  var allBull = topDown.weeklyBias==='BULL' && topDown.fourHBias==='BULL' && trend1h==='BULL' && trend15==='BULL';
+  var h4_1h_align_bear = topDown.fourHBias==='BEAR' && trend1h==='BEAR';
+  var h4_1h_align_bull = topDown.fourHBias==='BULL' && trend1h==='BULL';
+  if (allBear) { shortScore += 15; shortFactors.push({label:'Full-stack BEAR: Wk+4H+1H+15m all aligned', score:15, type:'key'}); }
+  else if (h4_1h_align_bear) { shortScore += 8; shortFactors.push({label:'4H+1H both bearish (partial alignment)', score:8, type:'info'}); }
+  if (allBull) { longScore  += 15; longFactors.push({label:'Full-stack BULL: Wk+4H+1H+15m all aligned', score:15, type:'key'}); }
+  else if (h4_1h_align_bull) { longScore  += 8; longFactors.push({label:'4H+1H both bullish (partial alignment)', score:8, type:'info'}); }
+  /* KEY FIX: 1H and 4H conflict — add explicit CONFLICT penalty */
+  if (h4_1h_align_bear && trend1h==='BULL') { /* 4H bear but 1H bull */
+    shortScore -= 15; longScore -= 5;
+    shortFactors.push({label:'1H/4H CONFLICT: 4H bear + 1H bull — wait for resolution', score:-15, type:'warn'});
+    longFactors.push({label:'1H/4H CONFLICT: 4H bear + 1H bull — partial counter-trend', score:-5, type:'warn'});
+  }
+  if (h4_1h_align_bull && trend1h==='BEAR') { /* 4H bull but 1H bear */
+    longScore  -= 15; shortScore -= 5;
+    longFactors.push({label:'1H/4H CONFLICT: 4H bull + 1H bear — wait for resolution', score:-15, type:'warn'});
+    shortFactors.push({label:'1H/4H CONFLICT: 4H bull + 1H bear — partial counter-trend', score:-5, type:'warn'});
+  }
 
   // Cap scores
   shortScore = Math.max(0, Math.min(100, shortScore));
@@ -1058,6 +1324,7 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price) {
       usdtDom: liveData.usdt_dom, usdtFall: usdtFall,
       pat4h: pat4h, pat1h: pat1h,
       htfBear: htfBear, htfBull: htfBull,
+      topDown: topDown, /* full cascade result */
       allBear: allBear, allBull: allBull
     }
   };
@@ -1106,11 +1373,15 @@ function updateScalpPanel(result) {
   var bsl1h = result.context.liq1h.bsl.filter(function(x){return x>p;}).slice(0,3);
   var ssl1h = result.context.liq1h.ssl.filter(function(x){return x<p;}).slice(0,3);
 
-  el.innerHTML = '<div class="alert info" style="margin-bottom:10px">'
-    +'<div class="ai">⚡</div><div><strong>Live Scalp Context:</strong> '
-    +'Price $'+p.toFixed(2)+' | 15m='+dir15+' | 1H='+dir1h+' | '
-    +'ATR(15m)='+(ctx.atr15>0?'$'+ctx.atr15.toFixed(2):'…')+' | ATR(1H)='+(ctx.atr1h>0?'$'+ctx.atr1h.toFixed(2):'…')+'<br>'
-    +'Vol(1H): '+ctx.volRatio1h.toFixed(2)+'x avg | Pat(1H): '+ctx.pat1h+'</div></div>';
+  var td = ctx.topDown || {};
+  function bl(b){ return b==='BULL'?'<span style="color:var(--green)">BULL</span>':b==='BEAR'?'<span style="color:var(--red)">BEAR</span>':'<span style="color:var(--text2)">NEUT</span>'; }
+  el.innerHTML =
+    '<div style="background:rgba(168,85,247,.06);border:1px solid rgba(168,85,247,.22);border-radius:8px;padding:9px 11px;margin-bottom:8px;font-size:.62rem;line-height:1.6">'
+    +'<div style="font-size:.60rem;font-weight:800;color:var(--scalp);text-transform:uppercase;letter-spacing:.7px;margin-bottom:5px">Scalp Context — Macro Gate</div>'
+    +'<div><strong style="color:var(--text)">Macro:</strong> Yr '+bl(td.yearlyBias)+' → Wk '+bl(td.weeklyBias)+' → D '+bl(td.dailyBias)+' → 4H '+bl(td.fourHBias)+'</div>'
+    +'<div><strong style="color:var(--text)">Scalp bias:</strong> 15m='+dir15+' | 1H='+dir1h+' | ATR(15m)='+(ctx.atr15>0?'$'+ctx.atr15.toFixed(2):'…')+'</div>'
+    +'<div><strong style="color:var(--text)">Filter:</strong> '+(td.bias==='NEUTRAL'?'<span style="color:var(--warn)">Macro neutral — scalp longs AND shorts valid but halve size</span>':td.bias==='BULL'?'<span style="color:var(--green)">Macro bull — LONG scalps preferred. Short scalps: counter-trend, 25% size only</span>':'<span style="color:var(--red)">Macro bear — SHORT scalps preferred. Long scalps: counter-trend, 25% size only</span>')+'</div>'
+    +'</div>';
 
   // Update structure bars
   var sb = document.getElementById('scalp-struct');
@@ -1160,18 +1431,48 @@ function updateIntradayPanel(result) {
     +'</div>'
     + factorRows(factors);
 
-  // Update context alert
+  // Update context alert with top-down cascade waterfall
   var ctxEl = document.getElementById('intra-context');
   if (ctxEl) {
-    var htfStr = ctx.htfBear?'HTF BEAR (Daily+4H)':ctx.htfBull?'HTF BULL (Daily+4H)':'HTF MIXED';
-    var bos4str = ctx.bos4h.bull?'BOS Bull':ctx.bos4h.bear?'BOS Bear':'No BOS';
-    ctxEl.innerHTML = '<div class="alert '+(dir==='SHORT'?'danger':dir==='LONG'?'success':'warn')+'">'
-      +'<div class="ai">'+(dir==='SHORT'?'🔴':dir==='LONG'?'🟢':'⚠️')+'</div>'
-      +'<div><strong>Live Signal ('+dir+', '+score+'pts):</strong> '
-      +htfStr+' | 4H '+bos4str+' | USDT Dom '+ctx.usdtDom.toFixed(2)+'% '+(ctx.usdtFall?'↓':'↑')
-      +' | Vol '+ctx.volRatio4h.toFixed(2)+'x | '+ctx.pat4h+'<br>'
-      +(dir==='NEUTRAL'?'<strong>NO TRADE</strong> — Score below threshold ('+result.threshold+'). Conflicting signals. Wait for clearer setup.':'Trade plan levels updated with live ATR-based sizing below.')
-      +'</div></div>';
+    var td = ctx.topDown || {};
+    var tdStack = td.stack || [];
+    var biasCol = dir==='SHORT'?'var(--red)':dir==='LONG'?'var(--green)':'var(--warn)';
+    var biasBg  = dir==='SHORT'?'rgba(255,61,90,.06)':dir==='LONG'?'rgba(0,230,118,.06)':'rgba(255,152,0,.06)';
+    var biasBdr = dir==='SHORT'?'rgba(255,61,90,.25)':dir==='LONG'?'rgba(0,230,118,.22)':'rgba(255,152,0,.22)';
+    function biasLabel(b){ return b==='BULL'?'BULL':b==='BEAR'?'BEAR':'NEUT'; }
+    function biasDot(b){ return b==='BULL'?'var(--green)':b==='BEAR'?'var(--red)':'var(--text2)'; }
+    var cascadeRows = tdStack.map(function(layer) {
+      var bc = biasDot(layer.bias);
+      return '<div style="display:flex;align-items:baseline;gap:7px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04)">'
+        +'<div style="font-size:.60rem;font-weight:800;color:var(--text2);width:44px;flex-shrink:0">'+layer.tf+'</div>'
+        +'<div style="width:7px;height:7px;border-radius:50%;background:'+bc+';flex-shrink:0;margin-top:2px"></div>'
+        +'<div style="font-size:.66rem;font-weight:900;color:'+bc+';width:36px;flex-shrink:0">'+biasLabel(layer.bias)+'</div>'
+        +'<div style="font-size:.59rem;color:var(--text2);flex:1;line-height:1.35">'+layer.note+'</div>'
+        +'</div>';
+    }).join('');
+    var arrowParts = [
+      {l:'Yr',b:td.yearlyBias},{l:'Wk',b:td.weeklyBias},
+      {l:'D', b:td.dailyBias}, {l:'4H',b:td.fourHBias}
+    ].map(function(x){
+      return '<span style="color:'+biasDot(x.b)+';font-weight:800">'+x.l+'<span style="font-size:.55rem">:'+biasLabel(x.b)+'</span></span>';
+    }).join('<span style="color:var(--text2);margin:0 3px">→</span>');
+    var conflictWarn = td.fourHConflict
+      ? '<div style="margin-top:7px;padding:6px 9px;background:rgba(255,152,0,.1);border-radius:6px;border:1px solid rgba(255,152,0,.3);font-size:.63rem;color:var(--warn)">⚠️ <strong>4H counter-trend vs macro:</strong> Pullback inside macro '+biasLabel(td.bias)+'. If trading — reduce size 50%, use tighter SL, target only 1H liquidity.</div>'
+      : '';
+    var noTradeWarn = dir==='NEUTRAL'
+      ? '<div style="margin-top:6px;font-size:.65rem;color:var(--warn)"><strong>⛔ NO TRADE</strong> — Intraday confluence insufficient ('+score+'/100 &lt; '+result.threshold+'). Await 4H BOS confirmation in macro direction.</div>'
+      : '<div style="margin-top:5px;font-size:.62rem;color:var(--text2)">✅ ATR-based trade levels updated below ↓</div>';
+    ctxEl.innerHTML =
+      '<div style="background:'+biasBg+';border:1px solid '+biasBdr+';border-radius:9px;padding:11px 13px;margin-bottom:8px">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
+      +'<div style="font-size:.66rem;font-weight:900;text-transform:uppercase;letter-spacing:.8px;color:'+biasCol+'">'+dir+' &nbsp;'+score+' pts</div>'
+      +'<div style="font-size:.60rem;color:var(--text2)">'+arrowParts+'</div>'
+      +'</div>'
+      +'<div style="font-size:.58rem;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px">Top-Down Cascade</div>'
+      +cascadeRows
+      +conflictWarn
+      +noTradeWarn
+      +'</div>';
   }
 
   // Update levels with live data
@@ -1194,6 +1495,30 @@ function updateSwingPanel(result) {
   // Update Elliott wave price ladder
   var priceEl = document.getElementById('swing-curr-price');
   if (priceEl) priceEl.textContent = (p>0)?'$'+p.toFixed(2):'$—';
+
+  // Update swing top-down context if element exists
+  var swCtx = document.getElementById('swing-td-context');
+  if (swCtx && ctx.topDown) {
+    var td = ctx.topDown;
+    function swBl(b){ return b==='BULL'?'<span style="color:var(--green);font-weight:800">BULL</span>':b==='BEAR'?'<span style="color:var(--red);font-weight:800">BEAR</span>':'<span style="color:var(--text2)">NEUT</span>'; }
+    var swMsg = td.bias==='BEAR'
+      ? 'Macro bearish — swing shorts valid from supply zones. Longs only after weekly demand reclaim.'
+      : td.bias==='BULL'
+      ? 'Macro bullish — swing longs valid from demand zones. Shorts only after weekly supply rejection.'
+      : 'Macro neutral — swing trades higher risk. Only trade from major weekly S/D zones.';
+    swCtx.innerHTML =
+      '<div style="background:rgba(0,230,118,.05);border:1px solid rgba(0,230,118,.18);border-radius:8px;padding:10px 12px;font-size:.63rem;margin-bottom:10px">'
+      +'<div style="font-size:.60rem;font-weight:800;color:var(--swing);text-transform:uppercase;letter-spacing:.7px;margin-bottom:6px">Swing Macro Alignment</div>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:7px">'
+      +'<div><span style="color:var(--text2)">Yearly:</span> '+swBl(td.yearlyBias)+'</div>'
+      +'<div><span style="color:var(--text2)">Weekly:</span> '+swBl(td.weeklyBias)+'</div>'
+      +'<div><span style="color:var(--text2)">Daily:</span> '+swBl(td.dailyBias)+'</div>'
+      +'<div><span style="color:var(--text2)">4H:</span> '+swBl(td.fourHBias)+'</div>'
+      +'</div>'
+      +'<div style="color:var(--text2);line-height:1.5">'+swMsg+'</div>'
+      +'<div style="margin-top:5px;font-size:.58rem;color:var(--text2)">Cascade strength: <strong style="color:var(--gold)">'+td.strength+'%</strong></div>'
+      +'</div>';
+  }
 }
 
 function updateLevelEl(id, val) {
@@ -1270,22 +1595,36 @@ function runFullAnalysis() {
 
   Promise.all([
     fetchTicker(),
-    fetchCandles('4h', 100),
-    fetchCandles('1h', 100),
-    fetchCandles('15m', 100),
-    fetchUSDTDom()
+    fetchCandles('1w', 52),   /* [1] Weekly  — 52 candles = ~1 year */
+    fetchCandles('1d', 90),   /* [2] Daily   — 90 days */
+    fetchCandles('4h', 120),  /* [3] 4H      — 120 candles */
+    fetchCandles('1h', 120),  /* [4] 1H      — 120 candles */
+    fetchCandles('15m', 100), /* [5] 15m */
+    fetchUSDTDom()            /* [6] */
   ]).then(function(results) {
-    var c4h = results[1] || [], c1h = results[2] || [], c15 = results[3] || [];
+    var cW  = results[1] || [];
+    var c1d = results[2] || [];
+    var c4h = results[3] || [];
+    var c1h = results[4] || [];
+    var c15 = results[5] || [];
     var p = liveData.price;
     if (!p || !c4h.length) { _analysisRunning=false; if(statusEl){statusEl.textContent='⚠️ No data — retrying…';statusEl.style.color='var(--red)';} setTimeout(runFullAnalysis,5000); return; }
 
-    // Sync live price to last candle
-    if (c4h.length) { c4h[c4h.length-1].c = p; if(p>c4h[c4h.length-1].h)c4h[c4h.length-1].h=p; if(p<c4h[c4h.length-1].l)c4h[c4h.length-1].l=p; }
-    if (c1h.length) { c1h[c1h.length-1].c = p; if(p>c1h[c1h.length-1].h)c1h[c1h.length-1].h=p; if(p<c1h[c1h.length-1].l)c1h[c1h.length-1].l=p; }
+    // Sync live price to last candle on all intraday TFs
+    function syncPrice(c) { if(!c.length) return; var l=c[c.length-1]; l.c=p; if(p>l.h)l.h=p; if(p<l.l)l.l=p; }
+    syncPrice(c4h); syncPrice(c1h); syncPrice(c15);
 
-    liveData.candles = {h4:c4h, h1:c1h, m15:c15};
+    liveData.candles = {w1:cW, d1:c1d, h4:c4h, h1:c1h, m15:c15};
+    liveData.atr.d1 = calcATR(c1d, 14);
+
+    /* ── STEP 1: Top-down bias from macro TFs ── */
+    var tdResult = calcTopDownBias(cW, c1d, c4h, p);
+    liveData.topDownBias     = tdResult.bias;
+    liveData.topDownStrength = tdResult.strength;
+    liveData.topDownStack    = tdResult.stack;
+
     var result;
-    try { result = runStrictAnalysis(c4h, c1h, c15, p); } catch(e) { result = null; }
+    try { result = runStrictAnalysis(c4h, c1h, c15, p, tdResult); } catch(e) { result = null; }
     liveData.analysis = result;
 
     var ov = document.getElementById('load-overlay');
@@ -1330,7 +1669,10 @@ function init() {
       if(p>c4[c4.length-1].h)c4[c4.length-1].h=p;
       if(p<c4[c4.length-1].l)c4[c4.length-1].l=p;
       if(liveData.analysis){
-        try{renderSignalPanels(runStrictAnalysis(c4,c1,c15,p));}
+        try{
+          var _td=liveData.topDownBias!=='NEUTRAL'?{bias:liveData.topDownBias,strength:liveData.topDownStrength,stack:liveData.topDownStack,yearlyBias:liveData.topDownStack[0]&&liveData.topDownStack[0].bias||'NEUTRAL',weeklyBias:liveData.topDownStack[1]&&liveData.topDownStack[1].bias||'NEUTRAL',dailyBias:liveData.topDownStack[2]&&liveData.topDownStack[2].bias||'NEUTRAL',fourHBias:liveData.topDownStack[3]&&liveData.topDownStack[3].bias||'NEUTRAL',fourHConflict:false}:null;
+          renderSignalPanels(runStrictAnalysis(c4,c1,c15,p,_td));
+        }
         catch(e){}
       }
     }
