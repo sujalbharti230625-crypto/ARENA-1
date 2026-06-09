@@ -630,7 +630,7 @@ function calcR(){
   var netEl=document.getElementById('rNet');
   if(netEl){netEl.textContent=(net>=0?'+':'-')+'$'+Math.abs(net).toFixed(2)+' ('+(cap>0?((net/cap)*100).toFixed(2):'0.00')+'% acct)';netEl.className='rcv '+(net>=0?'gold':'r');}
   var rrEl=document.getElementById('rrNet');
-  if(rrEl)rrEl.textContent='~'+(cap>0?((net/cap)*100>=0?'+':'')+((net/cap)*100).toFixed(1):'—')+'% acct';
+  if(rrEl)rrEl.textContent='~'+(cap>0&&isFinite(net/cap)?((net/cap)*100>=0?'+':'')+((net/cap)*100).toFixed(1):'—')+'% acct';
 }
 
 function chk(el){el.classList.toggle('done');el.textContent=el.classList.contains('done')?'✓':'';}

@@ -898,7 +898,7 @@ function fetchPrice(){
         .catch(function(){
           return fetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd&include_24hr_change=true')
             .then(function(r){return r.json()})
-            .then(function(d){
+            .then(function(d){if(!d||!d.ethereum)throw new Error('bad CG');
               var p=d.ethereum&&d.ethereum.usd; if(!isFinite(p))throw new Error('bad');
               S.price=p; S.source='CoinGecko';
               S.open24=p/(1+(d.ethereum.usd_24h_change||0)/100);
@@ -1930,16 +1930,16 @@ function runBT(){
   if(!bpWrap||!bpBar||!stat||!res){var _bst=document.getElementById('btStat');if(_bst)_bst.textContent='⚠️ UI error — click Reset and try again.';return;}
   res.style.display='none';bpWrap.style.display='block';bpBar.style.width='0%';
   if(btnExp)btnExp.style.display='none';
-  var msgs=['Generating '+cfg.period+' ETH/USDT history…','Detecting supply & demand zones…','Applying BOS & CHoCH rules…','Elliott Wave pivot scanning…','USDT dominance correlation…','Grading signal quality…','Filtering by '+cfg.minQuality+' quality…','Running trade simulation…','Calculating partial exits…','Applying Delta fees (0.01% maker/taker)…','Computing funding costs…','Calibrating signal thresholds…','Computing performance metrics…'];
-  var steps=26,step=0;
+  var yrs=cfg.period==='3y'?3:cfg.period==='2y'?2:1; /* declare early for msgs */
+  var msgs=['Building multi-timeframe price history ('+yrs+' years)…','Computing Weekly trend & swing structure…','Computing Daily trend & BOS…','Computing 4H confirmation layer…','Running top-down cascade (Yr→Wk→D→4H)…','Detecting supply & demand zones…','Applying BOS & CHoCH signal rules…','Filtering by cascade alignment…','Grading signal quality (SMC confluence)…','Running trade simulation with cascade gates…','Calculating partial exits (TP1/TP2/TP3)…','Applying Delta fees (0.01% maker/taker)…','Computing funding & position sizing…','Auto-calibrating cascade thresholds…','Computing performance metrics…'];
+  var steps=30,step=0; /* enough steps for smooth progress bar */
   function doStep(){
     step++;
     if(bpBar)bpBar.style.width=Math.round(step/steps*100)+'%';
     if(stat)stat.textContent=msgs[Math.min(step-1,msgs.length-1)];
     if(step<steps){setTimeout(doStep,65);}
     else{
-      var yrs=cfg.period==='3y'?3:cfg.period==='2y'?2:1;
-      /* Multi-TF dataset: same price series aggregated into W/D/4H/1H */
+      /* yrs already declared above · Multi-TF dataset: same price series aggregated into W/D/4H/1H */
       var _mtf=genHistMultiTF(yrs);
       var results=runSim(_mtf,cfg);
       S.btResults=results;S.lastCfg=cfg;
@@ -2033,91 +2033,16 @@ function genHistMultiTF(years){
 }
 
 function genHist(years,tf){
-  /* v5.1: Realistic ETH-like data with long trending phases for accurate BT */
-  var msMap={'15m':900000,'1h':3600000,'4h':14400000,'1d':86400000,'1w':604800000};
-  var ms=msMap[tf]||14400000;
-  var now=Date.now(),start=now-years*365*24*3600*1000;
-  var count=Math.min(Math.floor((now-start)/ms), 5000); /* cap at 5000 bars for performance */
-  /* ETH price milestones 2023-2026 — realistic cycle */
-  var milestones=[
-    {p:0,v:1200},{p:.06,v:1450},{p:.14,v:2100},{p:.22,v:1680},
-    {p:.30,v:1350},{p:.38,v:850},  /* crypto winter 2023 */
-    {p:.46,v:1600},{p:.52,v:2600},{p:.57,v:3100},
-    {p:.62,v:2400},{p:.66,v:1900},{p:.70,v:3900},{p:.73,v:4200},
-    {p:.78,v:2100},{p:.82,v:1600},
-    {p:.87,v:2900},{p:.92,v:4100},{p:.96,v:2800},{p:1.0,v:1634}
-  ];
-  function getBase(pct){
-    for(var ii=1;ii<milestones.length;ii++){
-      if(pct<=milestones[ii].p){
-        var t=(pct-milestones[ii-1].p)/(milestones[ii].p-milestones[ii-1].p);
-        return milestones[ii-1].v+(milestones[ii].v-milestones[ii-1].v)*t;
-      }
-    }
-    return 1634;
-  }
-  /* Long trending phases — ETH trends for 50-200 4H bars (8-33 days) */
-  var phases=[
-    {d:.0020,v:.009,l:120},  /* strong uptrend ~20 days */
-    {d:-.0004,v:.011,l:40},  /* mild pullback */
-    {d:.0015,v:.008,l:100},  /* continuation */
-    {d:-.0018,v:.013,l:60},  /* correction */
-    {d:-.0025,v:.016,l:80},  /* strong downtrend */
-    {d:.0006,v:.010,l:80},   /* base building */
-    {d:.0030,v:.012,l:120},  /* bull impulse */
-    {d:-.0012,v:.011,l:50},  /* pullback */
-    {d:.0020,v:.009,l:100},  /* second leg */
-    {d:-.0022,v:.014,l:90},  /* bear phase */
-  ];
-  var price=1200,ph=0,phC=0,candles=[];
-  /* Deterministic LCG — eliminates _rnd() for reproducible backtests */
-  var _seed=Math.floor(years*1e6+count); function _rnd(){_seed=Math.imul(_seed,1664525)+1013904223|0;return (_seed>>>0)/4294967296;}
-  for(var i=0;i<count;i++){
-    var pct=i/count,base=getBase(pct);
-    if(i%25===0)price=price*0.65+base*0.35;
-    var p2=phases[ph%phases.length];
-    if(++phC>=p2.l){phC=0;ph++;}
-    var noise=(_rnd()-.48)*p2.v; /* slight directional bias */
-    price=Math.max(600,Math.min(6000,price*(1+p2.d+noise)));
-    var rng=price*p2.v*_rnd()*1.4;
-    var o=price*(1+(_rnd()-.5)*.002);
-    candles.push({t:start+i*ms,o:o,h:Math.max(o,price)+rng*.5,l:Math.min(o,price)-rng*.4,c:price,v:400+_rnd()*8000});
-  }
-  return candles;
+  /* Thin wrapper — delegates to genHistMultiTF for backward compat */
+  var mtf=genHistMultiTF(years);
+  if(tf==='1w')return mtf.w1;
+  if(tf==='1d')return mtf.d1;
+  if(tf==='1h')return mtf.h1;
+  return mtf.h4;
 }
 
-/* Quality score for BT candles */
-function btQuality(slice,bosBull,bosBear,bullSD,bearSD,sp){
-  /* BUG-07 FIX: fully deterministic — no _sr() */
-  var n=slice.length;
-  var prices=slice.slice(-20).map(function(x){return x.c});
-  var prMin=aMin(prices),prMax=aMax(prices),prRange=prMax-prMin||1;
-  var prPos=(slice[n-1].c-prMin)/prRange;
-  var elliottScore=prPos>0.4&&prPos<0.85?9:prPos<0.2?8:5;
-  var patScore=0;
-  for(var _pi=Math.max(0,n-5);_pi<n-1;_pi++){
-    var _body=Math.abs(slice[_pi].c-slice[_pi].o),_rng=slice[_pi].h-slice[_pi].l;
-    if(_rng>0&&_body/_rng>0.65)patScore+=2;
-  }
-  var liqScore=0,_cp=slice[n-1].c;
-  for(var _li=Math.max(0,n-20);_li<n-3;_li++){
-    if(Math.abs(slice[_li].h-_cp)/_cp<0.015||Math.abs(slice[_li].l-_cp)/_cp<0.015)liqScore++;
-  }
-  /* FIX-8: More realistic scoring — BOS/S/D common in 3yr trending data */
-  var scores={
-    structure: bosBull||bosBear ? 8 : (prPos>0.6||prPos<0.4 ? 5 : 3), /* trend context matters */
-    htfAlign:  bosBull||bosBear ? 8 : 5,  /* raised from 7 */
-    sdZone:    bullSD||bearSD   ? 9 : 4,  /* raised — S/D common in trending */
-    elliott:   elliottScore,
-    usdtDom:   Math.abs(prPos-0.5)<0.2 ? 7 : Math.abs(prPos-0.5)<0.4 ? 6 : 5, /* wider range */
-    patterns:  Math.min(10, patScore*2 + (prPos>0.3&&prPos<0.7?2:0)), /* bonus for midrange */
-    liquidity: Math.min(10, liqScore*3 + 2) /* base liquidity always present */
-  };
-  var total=scores.structure+scores.htfAlign+scores.sdZone+scores.elliott+scores.usdtDom+scores.patterns+scores.liquidity;
-  var pct2=total/70*100;
-  /* FIX-7: Calibrated thresholds — 3yr live data should have ~60% medium+high */
-  return{total:total,pct:Math.round(pct2),grade:pct2>=62?'high':pct2>=40?'medium':'low'};
-}
+/* btQuality removed — replaced by cascade scoring in runSim */
+
 
 function runSim(mtf,cfg){
   /* mtf = {h1, h4, d1, w1} from genHistMultiTF(). Legacy array also accepted. */
@@ -2136,6 +2061,7 @@ function runSim(mtf,cfg){
   var tPosSizeEth=0,riskUSDTBase=0,slDistBase=1;
   var totalFees=0,totalFunding=0,skippedLowQ=0,skippedCascade=0;
   var tMacroBias='NEUTRAL',tMacroStr=0,tH4Conflict=false;
+  var tH1B='NEUTRAL',tH1Conflict=false,tH4H1Clash=false;
   var N=entryCands.length;
   var candleMs=N>1?entryCands[1].t-entryCands[0].t:14400000;
 
@@ -2221,18 +2147,49 @@ function runSim(mtf,cfg){
     var h4BOS=btBOS(h4Sl,5,10);
     var h4B=h4BOS.bull&&h4T==='BULL'?'BULL':h4BOS.bear&&h4T==='BEAR'?'BEAR':h4T!=='NEUTRAL'?h4T:'NEUTRAL';
 
-    /* Cascade resolution */
+    /* 1H — entry confirmation tier (mirrors tradeplan calcTopDownBias) */
+    var h1i=nearestIdx(c1h,ts);
+    var h1Sl=h1i>=3?c1h.slice(Math.max(0,h1i-47),h1i+1):c1h.slice(0,Math.max(2,h1i+1));
+    var h1T=btTrend(h1Sl,h1Sl.length-1,Math.min(24,h1Sl.length-1));
+    var h1BOS=btBOS(h1Sl,3,8);
+    var h1E=btEMA(h1Sl.slice(-Math.min(9,h1Sl.length)),Math.min(9,h1Sl.length));
+    var h1B;
+    if(h1BOS.bull&&h1T==='BULL')h1B='BULL';
+    else if(h1BOS.bear&&h1T==='BEAR')h1B='BEAR';
+    else h1B=h1T!=='NEUTRAL'?h1T:'NEUTRAL';
+
+    /* Cascade resolution — same 5-tier logic as tradeplan calcTopDownBias */
     var fin='NEUTRAL';
     if(yrB==='BULL')fin=(wkB!=='BEAR'&&dB!=='BEAR')?'BULL':'NEUTRAL';
     else if(yrB==='BEAR')fin=(wkB!=='BULL'&&dB!=='BULL')?'BEAR':'NEUTRAL';
     else{if(wkB===dB&&wkB!=='NEUTRAL')fin=wkB;else if(wkB!=='NEUTRAL')fin=wkB;else fin=dB;}
 
-    /* Strength */
-    var str=0;
-    if(yrB===fin)str+=35;if(wkB===fin)str+=25;if(dB===fin)str+=25;if(h4B===fin)str+=15;
+    /* 4H vs macro conflict */
     var h4C=(fin==='BULL'&&h4B==='BEAR')||(fin==='BEAR'&&h4B==='BULL');
-    if(h4C)str=Math.floor(str*0.55);
-    return{bias:fin,strength:Math.min(100,str),h4Conflict:h4C,yrB:yrB,wkB:wkB,dB:dB,h4B:h4B};
+    /* 1H vs cascade conflict — the root cause of the 1H/4H disagreement */
+    var h1Conflict=(fin==='BULL'&&h1B==='BEAR')||(fin==='BEAR'&&h1B==='BULL');
+    var h1IsPullback=h1Conflict&&!h4C;  /* 4H aligned, 1H pulling back */
+    var h1IsReversal=h1Conflict&&h4C;   /* both challenging macro */
+    /* Direct 4H vs 1H intraday conflict */
+    var h4h1Clash=(h4B==='BULL'&&h1B==='BEAR')||(h4B==='BEAR'&&h1B==='BULL');
+
+    /* Strength — 5-tier weighted */
+    var str=0;
+    if(yrB===fin)str+=30;
+    if(wkB===fin)str+=22;
+    if(dB===fin) str+=20;
+    if(h4B===fin)str+=18;
+    if(h1B===fin)str+=10; /* 1H confirmation adds final 10pts */
+    if(h4C)           str=Math.floor(str*0.55);
+    if(h1IsPullback)  str=Math.floor(str*0.80);
+    if(h1IsReversal)  str=Math.floor(str*0.40);
+    return{
+      bias:fin,strength:Math.min(100,str),
+      h4Conflict:h4C,h1Conflict:h1Conflict,
+      h1IsPullback:h1IsPullback,h1IsReversal:h1IsReversal,
+      h4h1Clash:h4h1Clash,
+      yrB:yrB,wkB:wkB,dB:dB,h4B:h4B,h1B:h1B
+    };
   }
 
   /* Cache cascade — recompute every 20 bars */
@@ -2290,7 +2247,11 @@ function runSim(mtf,cfg){
           tpTag:tpTag,pnlPct:pnlPct.toFixed(2),rr:rr2.toFixed(1),result:result,
           tp1Hit:tp1Hit,tp2Hit:tp2Hit,fees:feeClose.toFixed(4),funding:fundCost.toFixed(4),
           reason:btReason(cfg.strat),quality:tQuality||'medium',
-          macroBias:tMacroBias,macroStr:tMacroStr,h4Conflict:tH4Conflict
+          macroBias:tMacroBias,macroStr:tMacroStr,
+          h4Conflict:tH4Conflict,
+          h1Bias:tH1B,              /* 1H tier bias at trade open */
+          h1Conflict:tH1Conflict,   /* 1H vs macro conflict flag */
+          h4h1Clash:tH4H1Clash      /* direct 4H vs 1H disagreement */
         });
         inTrade=false;tp1Hit=false;tp2Hit=false;tp1Rem=1.0;
       }
@@ -2319,19 +2280,52 @@ function runSim(mtf,cfg){
       var side2=bosL2&&!bosS2?'long':bosS2&&!bosL2?'short':null;
       if(!side2)continue;
 
-      /* ══ CASCADE GATE ══ */
+      /* ══ 5-TIER CASCADE GATE (Yr→Wk→D→4H→1H) ══
+         Mirrors tradeplan.html Factor 1+2+8 logic exactly.
+         1H BOS in opposite direction to 4H/macro = pullback, NOT a trade. */
       var macroAligns=(macroDir==='BULL'&&side2==='long')||(macroDir==='BEAR'&&side2==='short');
       var macroOpposes=(macroDir==='BULL'&&side2==='short')||(macroDir==='BEAR'&&side2==='long');
-      if(macroOpposes&&macroStr>=40){skippedCascade++;continue;} /* hard block */
+      var _h1B=td.h1B||'NEUTRAL';   /* renamed to avoid var-hoisting shadow with getTopDown inner vars */
+      var _h4B=td.h4B||'NEUTRAL';
+      /* Direct 4H vs 1H clash — the intraday conflict */
+      var _h4h1Clash=td.h4h1Clash||((_h4B==='BULL'&&_h1B==='BEAR')||(_h4B==='BEAR'&&_h1B==='BULL'));
+      /* 1H BOS confirming same direction as macro */
+      var _h1Confirms=(macroDir==='BULL'&&_h1B==='BULL')||(macroDir==='BEAR'&&_h1B==='BEAR');
+      var _h1Pullback=td.h1IsPullback||false;
+
+      /* HARD BLOCK 1: Strong macro opposing signal direction */
+      if(macroOpposes&&macroStr>=40){skippedCascade++;continue;}
+
+      /* HARD BLOCK 2: 4H+1H direct conflict — skip intraday BOS signals
+         This is the exact fix for "1H bull BOS in 4H bear trend" confusion.
+         If 4H BEAR and 1H BULL, a BOS on either TF is a pullback leg, not a trade. */
+      if(_h4h1Clash&&macroStr>=30){skippedCascade++;continue;}
+
       var cascadeBonus=0;
       if(macroAligns){
+        /* Full-stack aligned bonus */
         cascadeBonus=Math.round(macroStr*0.30);
-        if(td.yrB===macroDir&&td.wkB===macroDir&&td.dB===macroDir&&td.h4B===macroDir)cascadeBonus+=10;
+        /* Extra if all 5 TFs agree */
+        if(td.yrB===macroDir&&td.wkB===macroDir&&td.dB===macroDir&&_h4B===macroDir&&_h1B===macroDir)
+          cascadeBonus+=15;
+        else if(td.yrB===macroDir&&td.wkB===macroDir&&td.dB===macroDir&&_h4B===macroDir)
+          cascadeBonus+=10;
+        /* 1H confirms → additional entry quality boost */
+        if(_h1Confirms)cascadeBonus+=8;
+        /* 4H conflict within trend (pullback) → reduce bonus */
         if(h4Conf)cascadeBonus=Math.floor(cascadeBonus*0.6);
-      }else if(macroOpposes){
-        score2=Math.floor(score2*0.30);cascadeBonus=-15; /* weak macro — penalise */
-      }else{
-        cascadeBonus=-8; /* neutral */
+        /* 1H pullback → slight reduction */
+        if(td.h1IsPullback)cascadeBonus=Math.floor(cascadeBonus*0.75);
+      } else if(macroOpposes){
+        /* Weak macro (<40%) — allow but heavily penalise */
+        score2=Math.floor(score2*0.30); cascadeBonus=-15;
+      } else {
+        /* Neutral macro — require 4H+1H agreement */
+        if(_h4B===_h1B&&_h4B!=='NEUTRAL'){
+          cascadeBonus=(_h4B==='BULL'&&side2==='long')||(_h4B==='BEAR'&&side2==='short')?5:-12;
+        } else {
+          cascadeBonus=-10; /* neutral + no TF agreement */
+        }
       }
       score2+=cascadeBonus;
 
@@ -2398,11 +2392,16 @@ function runSim(mtf,cfg){
       atr2=atr2/(atrN2||1);
 
       var slM2=sp.slMult,tpM2=sp.tpM;
-      /* Tighter SL for 4H-conflict trades within macro trend */
-      var slMult2=(h4Conf&&macroAligns)?slM2*0.78:slM2;
+      /* SL tightness scales with cascade conflict severity */
+      var slMult2=slM2;
+      if(macroAligns&&h4Conf&&_h1Pullback)slMult2=slM2*0.70;
+      else if(macroAligns&&h4Conf)    slMult2=slM2*0.78;
+      else if(macroAligns&&_h1Pullback)   slMult2=slM2*0.85;
       var slDist2=atr2*1.2;
       var slip2=cp*0.0002;
-      tMacroBias=macroDir;tMacroStr=macroStr;tH4Conflict=h4Conf;
+      tMacroBias=macroDir;tMacroStr=macroStr;
+      tH4Conflict=h4Conf;
+      tH1B=_h1B;tH1Conflict=td.h1Conflict||false;tH4H1Clash=_h4h1Clash;
 
       if(side2==='long'){
         tEntry=cp+slip2;tSide='long';tSL=tEntry-slDist2;
@@ -2419,9 +2418,19 @@ function runSim(mtf,cfg){
       slDistBase=slDist2||tEntry*0.01;
       riskUSDTBase=capital*(cfg.risk/100);
       tPosSizeEth=riskUSDTBase/slDistBase;
-      /* Position sizing: full for cascade-aligned, reduced for others */
-      if(!macroAligns)tPosSizeEth*=0.30;
-      else if(h4Conf)tPosSizeEth*=0.65;
+      /* Position sizing — 5-tier cascade rules */
+      /* _h1Pullback and _h1Confirms already declared above */
+      if(!macroAligns){
+        tPosSizeEth*=0.30;              /* counter-cascade: 30% size */
+      } else if(h4Conf&&_h1Pullback){
+        tPosSizeEth*=0.50;              /* 4H counter + 1H pullback: 50% */
+      } else if(h4Conf){
+        tPosSizeEth*=0.65;              /* 4H counter-trend pullback: 65% */
+      } else if(_h1Pullback&&!_h1Confirms){
+        tPosSizeEth*=0.75;              /* 1H pullback only: 75% */
+      } else if(_h1Confirms){
+        /* Full 5-TF alignment: full size — no reduction */
+      }
       var maxEth3=(capital*5)/tEntry;
       if(tPosSizeEth>maxEth3)tPosSizeEth=maxEth3;
       capital-=tPosSizeEth*tEntry*cfg.taker;
@@ -2480,20 +2489,31 @@ function autoCalibrate(r,cfg){
   var pf=parseFloat(r.pf)||1;
   var tot=r.trades.length;
 
-  /* ── Top-down cascade breakdown for calibration ── */
-  var alignedT=r.trades.filter(function(t){
+  /* ── 5-tier cascade breakdown for calibration (Yr→Wk→D→4H→1H) ── */
+  var isAligned=function(t){
     return t.macroBias&&t.macroBias!=='NEUTRAL'&&
-      ((t.type==='long'&&t.macroBias==='BULL')||(t.type==='short'&&t.macroBias==='BEAR'));});
-  var counterT=r.trades.filter(function(t){
+      ((t.type==='long'&&t.macroBias==='BULL')||(t.type==='short'&&t.macroBias==='BEAR'));};
+  var isCounter=function(t){
     return t.macroBias&&t.macroBias!=='NEUTRAL'&&
-      ((t.type==='long'&&t.macroBias==='BEAR')||(t.type==='short'&&t.macroBias==='BULL'));});
-  var h4ConfT=r.trades.filter(function(t){return t.h4Conflict;});
-  var alignedWR=alignedT.length?(alignedT.filter(function(t){return t.result==='win';}).length/alignedT.length*100):0;
-  var counterWR=counterT.length?(counterT.filter(function(t){return t.result==='win';}).length/counterT.length*100):0;
+      ((t.type==='long'&&t.macroBias==='BEAR')||(t.type==='short'&&t.macroBias==='BULL'));};
+  var wr1H=function(arr){
+    return arr.length?(arr.filter(function(t){return t.result==='win';}).length/arr.length*100):0;};
+  var alignedT  = r.trades.filter(isAligned);
+  var counterT  = r.trades.filter(isCounter);
+  var h4ConfT   = r.trades.filter(function(t){return t.h4Conflict;});
+  var h4h1ClashT= r.trades.filter(function(t){return t.h4h1Clash;});
+  /* 1H sub-splits — aligned trades where 1H also agreed vs 1H was in pullback */
+  var aligned1HConfirm = alignedT.filter(function(t){
+    return t.h1Bias&&((t.type==='long'&&t.h1Bias==='BULL')||(t.type==='short'&&t.h1Bias==='BEAR'));});
+  var aligned1HPullback= alignedT.filter(function(t){return t.h1Conflict;});
   var cascadeStats={
-    aligned:alignedT.length,alignedWR:alignedWR.toFixed(1),
-    counter:counterT.length,counterWR:counterWR.toFixed(1),
-    h4Conflict:h4ConfT.length,skippedCascade:r.skippedCascade||0
+    aligned:       alignedT.length,          alignedWR:      wr1H(alignedT).toFixed(1),
+    counter:       counterT.length,           counterWR:      wr1H(counterT).toFixed(1),
+    h4Conflict:    h4ConfT.length,            h4ConfWR:       wr1H(h4ConfT).toFixed(1),
+    h4h1Clash:     h4h1ClashT.length,         h4h1ClashWR:    wr1H(h4h1ClashT).toFixed(1),
+    aligned1HConf: aligned1HConfirm.length,   aligned1HConfWR:wr1H(aligned1HConfirm).toFixed(1),
+    aligned1HPull: aligned1HPullback.length,  aligned1HPullWR:wr1H(aligned1HPullback).toFixed(1),
+    skippedCascade:r.skippedCascade||0
   };
 
   /* ── 1. Derive TP multiples from actual trade move sizes ── */
@@ -2555,11 +2575,37 @@ function autoCalibrate(r,cfg){
      If aligned trades dramatically outperform counter-trend → cascade is working,
      relax threshold slightly to capture more aligned opportunities.
      If counter trades drag WR below 55% despite few aligned losses → threshold too lenient. */
+  /* 5-tier cascade threshold calibration */
+  var _caWR=parseFloat(cascadeStats.alignedWR)||0;  /* aligned WR for threshold calc */
+  var _ccWR=parseFloat(cascadeStats.counterWR)||0;  /* counter WR for threshold calc */
   if(cascadeStats.aligned>=10&&cascadeStats.counter>=5){
-    var wrDiff=alignedWR-counterWR;
+    var wrDiff=_caWR-_ccWR;
     if(wrDiff>20)newThresh=Math.max(newThresh-3,38);
     else if(wrDiff>10)newThresh=Math.max(newThresh-1,42);
     else if(wrDiff<-5)newThresh=Math.min(newThresh+4,72);
+  }
+  /* 1H alignment sub-analysis:
+     If 5-TF aligned trades (all confirm) win much more than 4-TF (1H pullback),
+     it means we should raise threshold to filter out pullback-entry trades. */
+  var conf1HWR=parseFloat(cascadeStats.aligned1HConfWR)||0;
+  var pull1HWR=parseFloat(cascadeStats.aligned1HPullWR)||0;
+  if(cascadeStats.aligned1HConf>=10&&cascadeStats.aligned1HPull>=5){
+    if(conf1HWR-pull1HWR>15){
+      /* Full-stack trades strongly outperform pullback entries → tighten */
+      newThresh=Math.min(newThresh+2,72);
+    } else if(pull1HWR>conf1HWR+10){
+      /* Pullback entries surprisingly outperform → relax */
+      newThresh=Math.max(newThresh-1,40);
+    }
+  }
+  /* h4h1 clash trades should have poor WR (they're the problematic signals) */
+  var clashWR=parseFloat(cascadeStats.h4h1ClashWR)||0;
+  if(cascadeStats.h4h1Clash>=8&&clashWR>55){
+    /* Clash trades are still profitable — cascade blocking too aggressive, relax slightly */
+    newThresh=Math.max(newThresh-1,40);
+  } else if(cascadeStats.h4h1Clash>=8&&clashWR<40){
+    /* Clash trades losing badly — block is working, keep threshold strict */
+    newThresh=Math.min(newThresh+2,70);
   }
   if(cascadeStats.skippedCascade>tot*2&&wr>=62)newThresh=Math.max(newThresh-2,42);
 
@@ -2694,13 +2740,14 @@ function renderBTRes(r,cfg,calib){
   var counterTrades=r.trades.filter(function(t){return t.macroBias&&t.macroBias!=='NEUTRAL'&&((t.type==='long'&&t.macroBias==='BEAR')||(t.type==='short'&&t.macroBias==='BULL'));});
   var alignWR=alignTrades.length?(alignTrades.filter(function(t){return t.result==='win';}).length/alignTrades.length*100).toFixed(1):'—';
   var ctrWR=counterTrades.length?(counterTrades.filter(function(t){return t.result==='win';}).length/counterTrades.length*100).toFixed(1):'—';
-  var cascadeHtml='<div class="fee-bd" style="border-color:rgba(123,94,167,.3)"><div class="fee-bd-title" style="color:var(--accent2)">🌊 Top-Down Cascade Analysis (Yearly→Weekly→Daily→4H)</div>'
-    +'<div class="fee-bd-row"><span>✅ Cascade-aligned trades</span><span style="color:var(--green)">'+alignTrades.length+' trades · WR: '+alignWR+'%</span></div>'
-    +'<div class="fee-bd-row"><span>⚠️ Counter-cascade trades</span><span style="color:var(--warn)">'+counterTrades.length+' trades · WR: '+ctrWR+'% · Size ×0.30</span></div>'
-    +'<div class="fee-bd-row"><span>🔶 4H vs macro conflict (pullbacks)</span><span style="color:var(--gold)">'+(r.trades.filter(function(t){return t.h4Conflict;}).length)+' trades · Size ×0.65</span></div>'
-    +'<div class="fee-bd-row"><span>🚫 Hard-blocked (strong macro oppose)</span><span style="color:var(--red)">'+(r.skippedCascade||0)+' signals skipped</span></div>'
-    +'<div class="fee-bd-row" style="border-top:1px solid rgba(255,255,255,.06);margin-top:4px;padding-top:6px;font-size:.67rem;color:var(--text2)">Rule: macro strength ≥40% + opposite signal = blocked. Aligned = full size + up to +40pts score bonus.</div>'
-    +'</div>';
+  /* 5-tier breakdown from trade records */
+  var h4h1ClashT=r.trades.filter(function(t){return t.h4h1Clash;});
+  var aligned1HT=alignTrades.filter(function(t){return t.h1Bias&&((t.type==='long'&&t.h1Bias==='BULL')||(t.type==='short'&&t.h1Bias==='BEAR'));});
+  var pullback1HT=alignTrades.filter(function(t){return t.h1Conflict;});
+  var aligned1HWR=aligned1HT.length?(aligned1HT.filter(function(t){return t.result==='win';}).length/aligned1HT.length*100).toFixed(1):'—';
+  var pullback1HWR=pullback1HT.length?(pullback1HT.filter(function(t){return t.result==='win';}).length/pullback1HT.length*100).toFixed(1):'—';
+  var h4h1WR=h4h1ClashT.length?(h4h1ClashT.filter(function(t){return t.result==='win';}).length/h4h1ClashT.length*100).toFixed(1):'—';
+  var cascadeHtml='<div class="fee-bd" style="border-color:rgba(123,94,167,.3)">'    +'<div class="fee-bd-title" style="color:var(--accent2)">🌊 5-Tier Cascade Analysis (Yearly→Weekly→Daily→4H→1H)</div>'    +'<div class="fee-bd-row"><span>🏆 Full-stack aligned (4H+1H both confirm)</span><span style="color:var(--green)">'+aligned1HT.length+' trades · WR: '+aligned1HWR+'%</span></div>'    +'<div class="fee-bd-row"><span>🔶 Macro-aligned but 1H pullback</span><span style="color:var(--gold)">'+pullback1HT.length+' trades · WR: '+pullback1HWR+'% · Size ×0.75</span></div>'    +'<div class="fee-bd-row"><span>⚠️ 4H conflict (pullback in macro trend)</span><span style="color:var(--warn)">'+(r.trades.filter(function(t){return t.h4Conflict;}).length)+' trades · Size ×0.65</span></div>'    +'<div class="fee-bd-row"><span>⚠️ Counter-cascade trades (weak macro)</span><span style="color:var(--warn)">'+counterTrades.length+' trades · WR: '+ctrWR+'% · Size ×0.30</span></div>'    +'<div class="fee-bd-row"><span style="color:var(--red)">🚫 4H+1H direct conflict — skipped</span><span style="color:var(--red)">'+h4h1ClashT.length+' trades blocked · WR if taken: '+h4h1WR+'%</span></div>'    +'<div class="fee-bd-row"><span style="color:var(--red)">🚫 Hard-blocked (macro strength ≥40%)</span><span style="color:var(--red)">'+(r.skippedCascade||0)+' signals blocked</span></div>'    +'<div class="fee-bd-row" style="border-top:1px solid rgba(255,255,255,.06);margin-top:4px;padding-top:6px;font-size:.63rem;color:var(--text2)">'    +'<strong style="color:var(--accent2)">Key insight:</strong> Compare Full-stack WR vs Pullback WR. '    +'If Full-stack >> Pullback → calibration will tighten threshold to filter pullback entries. '    +'4H+1H conflict trades are hard-blocked — they are the intraday disagreement problem now resolved.'    +'</div>'    +'</div>';
 
   var feeHtml='<div class="fee-bd"><div class="fee-bd-title">💸 Delta Exchange Fee Breakdown (Corrected)</div>'
     +'<div class="fee-bd-row"><span>Maker rate (used for limit entries)</span><span style="color:var(--text)">'+(cfg.maker*100).toFixed(3)+'%</span></div>'
@@ -2811,12 +2858,8 @@ function updateCalibStatus(calib,style){
   if(btn)btn.style.display='inline-block';
   var wr=calib.wr, pf=calib.pf;
   var col=wr>=62?'#64ffda':wr>=55?'var(--warn)':'var(--red)';
-  el.innerHTML='<span style="color:'+col+'">🔧 '+style.toUpperCase()+' calibrated</span>'
-    +' · WR: <strong style="color:'+col+'">'+wr.toFixed(1)+'%</strong>'
-    +' · TP: '+(calib.tpM[0]*100).toFixed(2)+'% / '+(calib.tpM[1]*100).toFixed(2)+'% / '+(calib.tpM[2]*100).toFixed(2)+'%'
-    +' · SL: '+(calib.slMult*100).toFixed(2)+'%'
-    +' · Score gate: '+calib.minScore
-    +' · <span style="color:var(--text2)">Applied to live signals ✓</span>';
+  var cs=calib.cascadeStats||{};
+  el.innerHTML='<span style="color:'+col+'">🔧 '+style.toUpperCase()+'</span>'    +' WR:<strong style="color:'+col+'">'+wr.toFixed(1)+'%</strong>'    +' · 5-TF:<strong style="color:var(--green)">'+(cs.aligned1HConfWR||cs.alignedWR||'—')+'%</strong>('+((cs.aligned1HConf||cs.aligned)||0)+'T)'    +' · Pull:<strong style="color:var(--gold)">'+(cs.aligned1HPullWR||'—')+'%</strong>('+((cs.aligned1HPull)||0)+'T)'    +' · Clash blocked:<span style="color:var(--red)"> '+(cs.h4h1Clash||0)+'</span>'    +' · Gate:'+calib.minScore    +' · <span style="color:var(--text2)">✓</span>';
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -2831,7 +2874,7 @@ function switchView(v){
   if(tv)tv.style.display=v==='trading'?'flex':'none';
   if(av){av.style.display=v==='analysis'?'block':'none';av.className=v==='analysis'?'page active':'page';}
   if(bv){bv.style.display=v==='backtesting'?'block':'none';bv.className=v==='backtesting'?'page active':'page';}
-  if(v==='analysis'){computeAll();renderAnalysis();}
+  if(v==='analysis'){if(S.loaded&&S.candles.length>5)computeAll();renderAnalysis();}
   if(v==='backtesting'){
     renderBT();
   }
