@@ -879,7 +879,7 @@ function candlePattern(c) {
 //   • If macro conflict → NEUTRAL (no intraday signal)
 //   • Bias strength 0-100 drives intraday signal scoring
 // ═══════════════════════════════════════════════════════════
-function calcTopDownBias(cW, c1d, c4h, c1h, price) {
+function calcTopDownBias(cW, c1d, c4h, c1h, c15m, price) {
   'use strict';
 
   /* Helper: trend direction of a candle array */
@@ -1038,6 +1038,29 @@ function calcTopDownBias(cW, c1d, c4h, c1h, price) {
     stack.push({ tf:'1H', bias:'NEUTRAL', note:'Insufficient 1H data', trend:'NEUTRAL' });
   }
 
+  /* ── TIER 6: 15m bias (execution confirmation — final entry gate) ── */
+  var m15Bias = 'NEUTRAL';
+  if (c15m && c15m.length >= 5) {
+    var m15Slice = c15m.slice(-Math.min(30, c15m.length)); /* last ~8h of 15m */
+    var m15n = m15Slice.length;
+    var m15Trend = m15Slice[m15n-1].c > m15Slice[Math.max(0,m15n-12)].o ? 'BULL' : 'BEAR';
+    var m15BOS = calcBOS(m15Slice, 3, 6);
+    var m15EMA = (function(c, p) {
+      var k=2/(p+1), v=c[0].c;
+      for(var i=1;i<c.length;i++) v=c[i].c*k+v*(1-k);
+      return v;
+    })(m15Slice.slice(-5), 5); /* 5-period EMA on 15m */
+    var m15Above = price > m15EMA;
+    if      (m15BOS.bull && m15Trend==='BULL') m15Bias = 'BULL';
+    else if (m15BOS.bear && m15Trend==='BEAR') m15Bias = 'BEAR';
+    else if (m15Trend !== 'NEUTRAL')            m15Bias = m15Trend;
+    stack.push({ tf:'15m', bias:m15Bias, trend:m15Trend, bos:m15BOS, emaAbove:m15Above,
+                 note: m15Bias==='BULL'?'15m BOS bull · Price>5EMA · Execute long':
+                       m15Bias==='BEAR'?'15m BOS bear · Price<5EMA · Execute short':'15m churning — wait for clean BOS' });
+  } else {
+    stack.push({ tf:'15m', bias:'NEUTRAL', note:'Insufficient 15m data', trend:'NEUTRAL' });
+  }
+
   /* ══════════════════════════════════════════════════════════
      CASCADED BIAS RESOLUTION — 5-tier hierarchy
      Yearly → Weekly → Daily → 4H → 1H
@@ -1094,19 +1117,32 @@ function calcTopDownBias(cW, c1d, c4h, c1h, price) {
   if (oneHIsReversal) strength = Math.floor(strength * 0.40); /* heavy reduction — macro weakening */
   strength = Math.min(100, Math.max(0, strength));
 
+  /* ── 15m vs 1H intraday conflict (the final entry gate) ── */
+  var m15Conflict  = (oneHBias==='BULL'&&m15Bias==='BEAR')||(oneHBias==='BEAR'&&m15Bias==='BULL');
+  var m15Confirms  = (finalBias!=='NEUTRAL'&&m15Bias===finalBias);
+  var m15IsPullback= m15Conflict&&!oneHConflict; /* 1H aligned, 15m pulling back */
+
+  /* Strength — 6-tier: add 15m confirmation (+5) */
+  if(m15Confirms) strength=Math.min(100,strength+5);
+  if(m15IsPullback) strength=Math.floor(strength*0.88);
+
   return {
     bias:          finalBias,
-    strength:      strength,
+    strength:      Math.min(100,strength),
     stack:         stack,
     yearlyBias:    yearlyBias,
     weeklyBias:    weeklyBias,
     dailyBias:     dailyBias,
     fourHBias:     fourHBias,
-    oneHBias:      oneHBias,      /* NEW */
+    oneHBias:      oneHBias,
+    m15Bias:       m15Bias,        /* NEW — 15m tier */
     fourHConflict: fourHConflict,
-    oneHConflict:  oneHConflict,  /* NEW */
-    oneHIsPullback:oneHIsPullback,/* NEW — 1H pullback within macro trend */
-    oneHIsReversal:oneHIsReversal,/* NEW — both 4H+1H challenging macro */
+    oneHConflict:  oneHConflict,
+    m15Conflict:   m15Conflict,    /* NEW — 1H vs 15m conflict */
+    m15IsPullback: m15IsPullback,  /* NEW — 15m pulling back inside 1H trend */
+    m15Confirms:   m15Confirms,    /* NEW — 15m confirms full cascade */
+    oneHIsPullback:oneHIsPullback,
+    oneHIsReversal:oneHIsReversal,
     bullCount:     bullCount,
     bearCount:     bearCount
   };
@@ -1130,7 +1166,11 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
   // Trends — use top-down engine results where available
   topDown = topDown || { bias:'NEUTRAL', strength:0, stack:[], yearlyBias:'NEUTRAL',
                          weeklyBias:'NEUTRAL', dailyBias:'NEUTRAL', fourHBias:'NEUTRAL',
-                         fourHConflict:false, bullCount:0, bearCount:0 };
+                         oneHBias:'NEUTRAL', m15Bias:'NEUTRAL',
+                         fourHConflict:false, oneHConflict:false, m15Conflict:false,
+                         oneHIsPullback:false, oneHIsReversal:false,
+                         m15IsPullback:false, m15Confirms:false,
+                         bullCount:0, bearCount:0 };
   var trend4h = topDown.fourHBias  !== 'NEUTRAL' ? topDown.fourHBias
               : (candles4h[n4-1].c > candles4h[Math.max(0,n4-20)].o ? 'BULL' : 'BEAR');
   var trend1d  = topDown.dailyBias !== 'NEUTRAL' ? topDown.dailyBias
@@ -1176,10 +1216,14 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
   var htfBear = macroDir === 'BEAR';
   var htfBull = macroDir === 'BULL';
   var tdStr   = topDown.strength || 0;
-  var oneHB   = topDown.oneHBias  || 'NEUTRAL';
+  var oneHB        = topDown.oneHBias    || 'NEUTRAL';
+  var m15B         = topDown.m15Bias     || 'NEUTRAL'; /* NEW — 15m bias */
   var oneHPullback = topDown.oneHIsPullback || false;
+  var m15Pullback  = topDown.m15IsPullback  || false;
+  var m15Confirms  = topDown.m15Confirms    || false;
+  var m15Conflict  = topDown.m15Conflict    || false;
   var oneHReversal = topDown.oneHIsReversal || false;
-  var tdLabel = (topDown.yearlyBias||'?')+' Yr → '+(topDown.weeklyBias||'?')+' Wk → '+(topDown.dailyBias||'?')+' D → '+(topDown.fourHBias||'?')+' 4H → '+(oneHB)+' 1H';
+  var tdLabel = (topDown.yearlyBias||'?')+' Yr → '+(topDown.weeklyBias||'?')+' Wk → '+(topDown.dailyBias||'?')+' D → '+(topDown.fourHBias||'?')+' 4H → '+(oneHB)+' 1H → '+(m15B)+' 15m';
 
   if (htfBear) {
     var macroScore = Math.round(25 + (tdStr/100)*10);
@@ -1193,9 +1237,18 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
     // Counter-cascade longs tracked via htfBear flag — post-scoring cap applied at end
     // 1H BULL in BEAR cascade = pullback bounce, NOT a long signal
     if (oneHB === 'BULL') {
-      shortScore -= 5; // 1H bounce means entry may be sub-optimal for short
-      shortFactors.push({label:'⚠️ 1H is BULL (pullback in BEAR trend). Wait for 1H to turn BEAR before shorting.', score:-5, type:'warn'});
-      longFactors.push({label:'🚫 1H BULL signal OVERRIDDEN — macro cascade is BEAR. This is a pullback, not a reversal.', score:0, type:'warn'});
+      shortScore -= 5;
+      shortFactors.push({label:'⚠️ 1H is BULL (pullback in BEAR trend). Wait for 1H→15m both BEAR.', score:-5, type:'warn'});
+      longFactors.push({label:'🚫 1H BULL OVERRIDDEN — macro BEAR cascade. Pullback, not reversal.', score:0, type:'warn'});
+    }
+    // 15m adds final execution confirmation in BEAR cascade
+    if (m15B === 'BEAR') {
+      shortScore += 6;
+      shortFactors.push({label:'15m also BEAR ✅ — full 6-TF cascade aligned (Yr→Wk→D→4H→1H→15m)', score:6, type:'key'});
+    } else if (m15B === 'BULL') {
+      shortScore -= 8;
+      shortFactors.push({label:'⚠️ 15m is BULL (micro pullback). Wait for 15m BOS BEAR before shorting.', score:-8, type:'warn'});
+      longFactors.push({label:'🚫 15m BULL in BEAR cascade = entry micro-bounce. Not a long signal.', score:0, type:'warn'});
     }
   } else if (htfBull) {
     var macroScoreB = Math.round(25 + (tdStr/100)*10);
@@ -1209,7 +1262,16 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
     if (oneHB === 'BEAR') {
       longScore -= 5;
       longFactors.push({label:'⚠️ 1H is BEAR (pullback in BULL trend). Wait for 1H to turn BULL before longing.', score:-5, type:'warn'});
-      shortFactors.push({label:'🚫 1H BEAR signal OVERRIDDEN — macro cascade is BULL. This is a pullback, not a reversal.', score:0, type:'warn'});
+      shortFactors.push({label:'🚫 1H BEAR OVERRIDDEN — macro BULL cascade. Pullback, not reversal.', score:0, type:'warn'});
+    }
+    // 15m gate in BULL cascade
+    if (m15B === 'BULL') {
+      longScore += 6;
+      longFactors.push({label:'15m also BULL ✅ — full 6-TF stack (Yr→Wk→D→4H→1H→15m)', score:6, type:'key'});
+    } else if (m15B === 'BEAR') {
+      longScore  -= 8;
+      longFactors.push({label:'⚠️ 15m BEAR (micro pullback). Wait for 15m BOS BULL before executing long.', score:-8, type:'warn'});
+      shortFactors.push({label:'🚫 15m BEAR in BULL cascade = micro-dip. Not a short signal.', score:0, type:'warn'});
     }
   } else {
     // NEUTRAL macro — require BOTH 4H and 1H to agree for any trade
@@ -1376,24 +1438,25 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
   else { shortScore -= 5; longScore -= 5; shortFactors.push({label:'Low volume '+volRatio4h.toFixed(2)+'x (weak conviction)', score:-5, type:'warn'}); longFactors.push({label:'Low volume '+volRatio4h.toFixed(2)+'x (weak conviction)', score:-5, type:'warn'}); }
 
   // Factor 8: Full 5-TF stack alignment bonus
+  /* allBear5/allBull5: full 6-TF perfect stack (uses m15B from cascade, not raw trend15) */
   var allBear5 = (topDown.yearlyBias==='BEAR'||topDown.yearlyBias==='NEUTRAL') &&
                  topDown.weeklyBias==='BEAR' && topDown.dailyBias==='BEAR' &&
-                 topDown.fourHBias==='BEAR' && oneHB==='BEAR' && trend15==='BEAR';
+                 topDown.fourHBias==='BEAR' && oneHB==='BEAR' && m15B==='BEAR';
   var allBull5 = (topDown.yearlyBias==='BULL'||topDown.yearlyBias==='NEUTRAL') &&
                  topDown.weeklyBias==='BULL' && topDown.dailyBias==='BULL' &&
-                 topDown.fourHBias==='BULL' && oneHB==='BULL' && trend15==='BULL';
+                 topDown.fourHBias==='BULL' && oneHB==='BULL' && m15B==='BULL';
   var h4_1h_agree_bear = topDown.fourHBias==='BEAR' && oneHB==='BEAR';
   var h4_1h_agree_bull = topDown.fourHBias==='BULL' && oneHB==='BULL';
   var h4_1h_conflict   = (topDown.fourHBias==='BEAR' && oneHB==='BULL') ||
                          (topDown.fourHBias==='BULL' && oneHB==='BEAR');
 
   if (allBear5) {
-    shortScore += 20; shortFactors.push({label:'🏆 Perfect BEAR stack: ALL 5 TFs aligned (Yr+Wk+D+4H+1H+15m)', score:20, type:'key'});
+    shortScore += 20; shortFactors.push({label:'🏆 Perfect BEAR stack: ALL 6 TFs aligned (Yr+Wk+D+4H+1H+15m)', score:20, type:'key'});
   } else if (h4_1h_agree_bear) {
     shortScore += 10; shortFactors.push({label:'4H+1H both BEAR — intraday cascade confirmed', score:10, type:'info'});
   }
   if (allBull5) {
-    longScore  += 20; longFactors.push({label:'🏆 Perfect BULL stack: ALL 5 TFs aligned (Yr+Wk+D+4H+1H+15m)', score:20, type:'key'});
+    longScore  += 20; longFactors.push({label:'🏆 Perfect BULL stack: ALL 6 TFs aligned (Yr+Wk+D+4H+1H+15m)', score:20, type:'key'});
   } else if (h4_1h_agree_bull) {
     longScore  += 10; longFactors.push({label:'4H+1H both BULL — intraday cascade confirmed', score:10, type:'info'});
   }
@@ -1444,18 +1507,32 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
     }
   }
 
-  // Direct 4H vs 1H intraday conflict: HARD BLOCK regardless of macro
-  // This specifically addresses "1H BULL in 4H BEAR" and vice versa
+  // Direct 4H vs 1H intraday conflict: HARD BLOCK
   if (topDown.oneHConflict || topDown.h4h1Clash ||
       (topDown.fourHBias==='BEAR' && topDown.oneHBias==='BULL') ||
       (topDown.fourHBias==='BULL' && topDown.oneHBias==='BEAR')) {
     var conflictingDir = topDown.fourHBias==='BEAR' ? 'long' : 'short';
-    if (conflictingDir === 'long' && longScore >= 60) { /* 60 = signal threshold */
-      longScore = Math.min(longScore, 44); // cap below threshold
-      longFactors.push({label:'⛔ LONG blocked: 4H BEAR + 1H BULL = intraday conflict. The 1H rally is a PULLBACK. Wait for 1H to turn BEAR.', score:0, type:'warn'});
-    } else if (conflictingDir === 'short' && shortScore >= 60) { /* 60 = signal threshold */
+    if (conflictingDir === 'long' && longScore >= 60) {
+      longScore = Math.min(longScore, 44);
+      longFactors.push({label:'⛔ LONG blocked: 4H BEAR + 1H BULL = pullback. Wait for 1H→15m both BEAR.', score:0, type:'warn'});
+    } else if (conflictingDir === 'short' && shortScore >= 60) {
       shortScore = Math.min(shortScore, 44);
-      shortFactors.push({label:'⛔ SHORT blocked: 4H BULL + 1H BEAR = intraday conflict. The 1H dip is a PULLBACK. Wait for 1H to turn BULL.', score:0, type:'warn'});
+      shortFactors.push({label:'⛔ SHORT blocked: 4H BULL + 1H BEAR = pullback. Wait for 1H→15m both BULL.', score:0, type:'warn'});
+    }
+  }
+
+  // NEW — 15m vs 1H conflict: the finest intraday gate
+  // If 1H agrees with cascade BUT 15m still opposes → micro pullback — cap the signal
+  if (topDown.m15Conflict ||
+      (topDown.oneHBias==='BULL' && topDown.m15Bias==='BEAR') ||
+      (topDown.oneHBias==='BEAR' && topDown.m15Bias==='BULL')) {
+    var m15ConflictDir = topDown.oneHBias==='BULL' ? 'long' : 'short';
+    if (m15ConflictDir === 'long' && longScore >= 60) {
+      longScore = Math.min(longScore, 52); /* allow near-threshold but not trigger */
+      longFactors.push({label:'⚠️ 15m is BEAR in 1H BULL trend — micro pullback in progress. Wait for 15m BOS BULL (entry refining).', score:0, type:'warn'});
+    } else if (m15ConflictDir === 'short' && shortScore >= 60) {
+      shortScore = Math.min(shortScore, 52);
+      shortFactors.push({label:'⚠️ 15m is BULL in 1H BEAR trend — micro pullback in progress. Wait for 15m BOS BEAR (entry refining).', score:0, type:'warn'});
     }
   }
 
@@ -1473,11 +1550,20 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
   // Safety: if cascade is strong but direction still shows counter-cascade, override
   if (direction === 'LONG' && htfBear && tdStr >= 40) {
     direction = 'NEUTRAL';
-    longFactors.push({label:'🚫 LONG direction overridden — BEAR cascade strength '+tdStr+'%. Signal suppressed.', score:0, type:'warn'});
+    longFactors.push({label:'🚫 LONG overridden — BEAR cascade '+tdStr+'% ['+tdLabel+']. Signal suppressed.', score:0, type:'warn'});
   }
   if (direction === 'SHORT' && htfBull && tdStr >= 40) {
     direction = 'NEUTRAL';
-    shortFactors.push({label:'🚫 SHORT direction overridden — BULL cascade strength '+tdStr+'%. Signal suppressed.', score:0, type:'warn'});
+    shortFactors.push({label:'🚫 SHORT overridden — BULL cascade '+tdStr+'% ['+tdLabel+']. Signal suppressed.', score:0, type:'warn'});
+  }
+  /* 15m final gate: even if direction fires, if 15m directly opposes cascade → NEUTRAL */
+  if (direction === 'LONG' && m15B === 'BEAR' && (htfBear || topDown.fourHBias==='BEAR')) {
+    direction = 'NEUTRAL';
+    longFactors.push({label:'⛔ LONG suppressed: 15m is BEAR opposing BEAR cascade. Wait for 15m BOS BULL before executing.', score:0, type:'warn'});
+  }
+  if (direction === 'SHORT' && m15B === 'BULL' && (htfBull || topDown.fourHBias==='BULL')) {
+    direction = 'NEUTRAL';
+    shortFactors.push({label:'⛔ SHORT suppressed: 15m is BULL opposing BULL cascade. Wait for 15m BOS BEAR before executing.', score:0, type:'warn'});
   }
 
   // === ATR-BASED LEVELS ===
@@ -1540,7 +1626,7 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
       oneHConflict: topDown.oneHConflict||false,  /* 4H vs 1H conflict flag */
       oneHIsPullback: topDown.oneHIsPullback||false,
       topDown: topDown, /* full cascade result */
-      allBear: allBear, allBull: allBull
+      allBear: allBear5, allBull: allBull5
     }
   };
 }
@@ -1595,7 +1681,7 @@ function updateScalpPanel(result) {
   el.innerHTML =
     '<div style="background:rgba(168,85,247,.06);border:1px solid rgba(168,85,247,.22);border-radius:8px;padding:9px 11px;margin-bottom:8px;font-size:.62rem;line-height:1.6">'
     +'<div style="font-size:.60rem;font-weight:800;color:var(--scalp);text-transform:uppercase;letter-spacing:.7px;margin-bottom:5px">Scalp Context — Macro Gate</div>'
-    +'<div><strong style="color:var(--text)">Macro:</strong> Yr '+bl(td.yearlyBias)+' → Wk '+bl(td.weeklyBias)+' → D '+bl(td.dailyBias)+' → 4H '+bl(td.fourHBias)+' → 1H '+bl(td.oneHBias||'NEUTRAL')+'</div>'
+    +'<div><strong style="color:var(--text)">Macro:</strong> Yr '+bl(td.yearlyBias)+' → Wk '+bl(td.weeklyBias)+' → D '+bl(td.dailyBias)+' → 4H '+bl(td.fourHBias)+' → 1H '+bl(td.oneHBias||'NEUTRAL')+' → 15m '+bl(td.m15Bias||'NEUTRAL')+'</div>'
     +'<div><strong style="color:var(--text)">Scalp bias:</strong> 15m='+dir15+' | 1H='+dir1h+' | ATR(15m)='+(ctx.atr15>0?'$'+ctx.atr15.toFixed(2):'…')+'</div>'
     +(function(){
       var h4b=td.fourHBias||'NEUTRAL', h1b=td.oneHBias||'NEUTRAL';
@@ -1687,18 +1773,24 @@ function updateIntradayPanel(result) {
     var arrowParts = [
       {l:'Yr',b:td.yearlyBias},{l:'Wk',b:td.weeklyBias},
       {l:'D', b:td.dailyBias}, {l:'4H',b:td.fourHBias},
-      {l:'1H',b:td.oneHBias||'NEUTRAL'}
+      {l:'1H',b:td.oneHBias||'NEUTRAL'},{l:'15m',b:td.m15Bias||'NEUTRAL'}
     ].map(function(x){
       return '<span style="color:'+biasDot(x.b)+';font-weight:800">'+x.l+'<span style="font-size:.55rem">:'+biasLabel(x.b)+'</span></span>';
     }).join('<span style="color:var(--text2);margin:0 3px">→</span>');
     var h4_1h_conflict_ui = (td.fourHBias==='BEAR' && (td.oneHBias||'NEUTRAL')==='BULL') ||
                               (td.fourHBias==='BULL' && (td.oneHBias||'NEUTRAL')==='BEAR');
+    var h1_15m_conflict_ui= ((td.oneHBias||'NEUTRAL')!=='NEUTRAL'&&(td.m15Bias||'NEUTRAL')!=='NEUTRAL'&&
+                              td.oneHBias!==td.m15Bias);
     var conflictMsg = h4_1h_conflict_ui
       ? (td.fourHBias==='BEAR'
-          ? '⛔ <strong>4H BEAR + 1H BULL = CONFLICT.</strong> The 1H rally is a pullback inside the 4H downtrend. <strong>Do NOT long.</strong> Wait for 1H to turn BEAR, then short from the 4H supply zone.'
-          : '⛔ <strong>4H BULL + 1H BEAR = CONFLICT.</strong> The 1H dip is a pullback inside the 4H uptrend. <strong>Do NOT short.</strong> Wait for 1H to turn BULL, then long from the 4H demand zone.')
+          ? '⛔ <strong>4H BEAR + 1H BULL = CONFLICT.</strong> The 1H rally is a pullback inside the 4H downtrend. <strong>Do NOT long.</strong> Wait for 1H → 15m both BEAR, then short from the 4H supply zone.'
+          : '⛔ <strong>4H BULL + 1H BEAR = CONFLICT.</strong> The 1H dip is a pullback inside the 4H uptrend. <strong>Do NOT short.</strong> Wait for 1H → 15m both BULL, then long from the 4H demand zone.')
+      : h1_15m_conflict_ui
+      ? ((td.oneHBias||'NEUTRAL')==='BULL'
+          ? '⚠️ <strong>1H BULL but 15m BEAR = micro pullback.</strong> Wait for <strong>15m BOS BULL</strong> for entry.'
+          : '⚠️ <strong>1H BEAR but 15m BULL = micro bounce.</strong> Wait for <strong>15m BOS BEAR</strong> for entry.')
       : '';
-    var conflictWarn = (td.fourHConflict || h4_1h_conflict_ui)
+    var conflictWarn = (td.fourHConflict || h4_1h_conflict_ui || h1_15m_conflict_ui)
       ? '<div style="margin-top:7px;padding:8px 10px;background:rgba(255,61,90,.08);border-radius:6px;border:1px solid rgba(255,61,90,.3);font-size:.63rem;color:var(--red);line-height:1.6">'
         + (conflictMsg || ('⚠️ <strong>4H counter-trend vs macro:</strong> Pullback inside macro '+biasLabel(td.bias)+'. Reduce size 50%. Target only 1H liquidity.'))
         + '</div>'
@@ -1779,11 +1871,13 @@ function updateSwingPanel(result) {
     swCtx.innerHTML =
       '<div style="background:rgba(0,230,118,.05);border:1px solid rgba(0,230,118,.18);border-radius:8px;padding:10px 12px;font-size:.63rem;margin-bottom:10px">'
       +'<div style="font-size:.60rem;font-weight:800;color:var(--swing);text-transform:uppercase;letter-spacing:.7px;margin-bottom:6px">Swing Macro Alignment</div>'
-      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:7px">'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:7px">'
       +'<div><span style="color:var(--text2)">Yearly:</span> '+swBl(td.yearlyBias)+'</div>'
       +'<div><span style="color:var(--text2)">Weekly:</span> '+swBl(td.weeklyBias)+'</div>'
       +'<div><span style="color:var(--text2)">Daily:</span> '+swBl(td.dailyBias)+'</div>'
       +'<div><span style="color:var(--text2)">4H:</span> '+swBl(td.fourHBias)+'</div>'
+      +'<div><span style="color:var(--text2)">1H:</span> '+swBl(td.oneHBias||'NEUTRAL')+'</div>'
+      +'<div><span style="color:var(--text2)">15m:</span> '+swBl(td.m15Bias||'NEUTRAL')+'</div>'
       +'</div>'
       +'<div style="color:var(--text2);line-height:1.5">'+swMsg+'</div>'
       +'<div style="margin-top:5px;font-size:.58rem;color:var(--text2)">Cascade strength: <strong style="color:var(--gold)">'+td.strength+'%</strong></div>'
@@ -1888,13 +1982,16 @@ function runFullAnalysis() {
     liveData.atr.d1 = calcATR(c1d, 14);
 
     /* ── STEP 1: Top-down bias from macro TFs ── */
-    var tdResult = calcTopDownBias(cW, c1d, c4h, c1h, p);
+    var tdResult = calcTopDownBias(cW, c1d, c4h, c1h, c15, p); /* 6-tier: Yr→Wk→D→4H→1H→15m */
     liveData.topDownBias      = tdResult.bias;
     liveData.topDownStrength  = tdResult.strength;
     liveData.topDownStack     = tdResult.stack;
-    liveData.topDownOneHBias  = tdResult.oneHBias || 'NEUTRAL';
-    liveData.topDownOneHConflict = tdResult.oneHConflict || false;
-    liveData.topDownOneHPullback = tdResult.oneHIsPullback || false;
+    liveData.topDownOneHBias  = tdResult.oneHBias   || 'NEUTRAL';
+    liveData.topDownM15Bias   = tdResult.m15Bias    || 'NEUTRAL';
+    liveData.topDownOneHConflict = tdResult.oneHConflict  || false;
+    liveData.topDownM15Conflict  = tdResult.m15Conflict   || false;
+    liveData.topDownOneHPullback = tdResult.oneHIsPullback|| false;
+    liveData.topDownM15Pullback  = tdResult.m15IsPullback || false;
 
     var result;
     try { result = runStrictAnalysis(c4h, c1h, c15, p, tdResult); } catch(e) { result = null; }
@@ -1956,8 +2053,12 @@ function init() {
             dailyBias: (_stack[2]&&_stack[2].bias)||'NEUTRAL',
             fourHBias: (_stack[3]&&_stack[3].bias)||'NEUTRAL',
             oneHBias:  (_stack[4]&&_stack[4].bias)||liveData.topDownOneHBias||'NEUTRAL',
+            m15Bias:   (_stack[5]&&_stack[5].bias)||liveData.topDownM15Bias||'NEUTRAL',
             fourHConflict:false,
             oneHConflict: liveData.topDownOneHConflict||false,
+            m15Conflict:  liveData.topDownM15Conflict||false,
+            m15IsPullback:liveData.topDownM15Pullback||false,
+            m15Confirms:  false,
             oneHIsPullback:liveData.topDownOneHPullback||false,
             oneHIsReversal:false
           }:null;

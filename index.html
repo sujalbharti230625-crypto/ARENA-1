@@ -2158,7 +2158,18 @@ function runSim(mtf,cfg){
     else if(h1BOS.bear&&h1T==='BEAR')h1B='BEAR';
     else h1B=h1T!=='NEUTRAL'?h1T:'NEUTRAL';
 
-    /* Cascade resolution — same 5-tier logic as tradeplan calcTopDownBias */
+    /* ── 15m (BT: derived from the 1H candles downsampled or from c1h as proxy) ── */
+    /* In BT, entryCands IS 4H for intraday style. We compute 15m from 1H using slice. */
+    var m15iH=nearestIdx(c1h,ts);
+    var m15Sl=m15iH>=3?c1h.slice(Math.max(0,m15iH-7),m15iH+1):c1h.slice(0,Math.max(2,m15iH+1)); /* last ~8 1H bars as 15m proxy */
+    var m15T=btTrend(m15Sl,m15Sl.length-1,Math.min(3,m15Sl.length-1));
+    var m15BOS=btBOS(m15Sl,2,4);
+    var m15B;
+    if(m15BOS.bull&&m15T==='BULL')m15B='BULL';
+    else if(m15BOS.bear&&m15T==='BEAR')m15B='BEAR';
+    else m15B=m15T!=='NEUTRAL'?m15T:'NEUTRAL';
+
+    /* Cascade resolution — 6-tier: Yr→Wk→D→4H→1H→15m */
     var fin='NEUTRAL';
     if(yrB==='BULL')fin=(wkB!=='BEAR'&&dB!=='BEAR')?'BULL':'NEUTRAL';
     else if(yrB==='BEAR')fin=(wkB!=='BULL'&&dB!=='BULL')?'BEAR':'NEUTRAL';
@@ -2166,29 +2177,35 @@ function runSim(mtf,cfg){
 
     /* 4H vs macro conflict */
     var h4C=(fin==='BULL'&&h4B==='BEAR')||(fin==='BEAR'&&h4B==='BULL');
-    /* 1H vs cascade conflict — the root cause of the 1H/4H disagreement */
+    /* 1H vs cascade conflict */
     var h1Conflict=(fin==='BULL'&&h1B==='BEAR')||(fin==='BEAR'&&h1B==='BULL');
-    var h1IsPullback=h1Conflict&&!h4C;  /* 4H aligned, 1H pulling back */
-    var h1IsReversal=h1Conflict&&h4C;   /* both challenging macro */
-    /* Direct 4H vs 1H intraday conflict */
+    var h1IsPullback=h1Conflict&&!h4C;
+    var h1IsReversal=h1Conflict&&h4C;
     var h4h1Clash=(h4B==='BULL'&&h1B==='BEAR')||(h4B==='BEAR'&&h1B==='BULL');
+    /* 15m vs 1H conflict — the micro entry gate */
+    var m15Conflict=(h1B==='BULL'&&m15B==='BEAR')||(h1B==='BEAR'&&m15B==='BULL');
+    var m15IsPullback=m15Conflict&&!h1Conflict; /* 1H aligned, 15m pulling back */
+    var m15Confirms=(fin!=='NEUTRAL'&&m15B===fin); /* 15m confirms full cascade */
 
-    /* Strength — 5-tier weighted */
+    /* Strength — 6-tier weighted */
     var str=0;
-    if(yrB===fin)str+=30;
-    if(wkB===fin)str+=22;
-    if(dB===fin) str+=20;
-    if(h4B===fin)str+=18;
-    if(h1B===fin)str+=10; /* 1H confirmation adds final 10pts */
+    if(yrB===fin)str+=28;
+    if(wkB===fin)str+=21;
+    if(dB===fin) str+=19;
+    if(h4B===fin)str+=17;
+    if(h1B===fin)str+=10;
+    if(m15B===fin)str+=5;  /* 15m adds 5pts when fully aligned */
     if(h4C)           str=Math.floor(str*0.55);
     if(h1IsPullback)  str=Math.floor(str*0.80);
     if(h1IsReversal)  str=Math.floor(str*0.40);
+    if(m15IsPullback) str=Math.floor(str*0.90);
     return{
       bias:fin,strength:Math.min(100,str),
       h4Conflict:h4C,h1Conflict:h1Conflict,
       h1IsPullback:h1IsPullback,h1IsReversal:h1IsReversal,
       h4h1Clash:h4h1Clash,
-      yrB:yrB,wkB:wkB,dB:dB,h4B:h4B,h1B:h1B
+      m15Conflict:m15Conflict,m15IsPullback:m15IsPullback,m15Confirms:m15Confirms,
+      yrB:yrB,wkB:wkB,dB:dB,h4B:h4B,h1B:h1B,m15B:m15B
     };
   }
 
@@ -2250,6 +2267,7 @@ function runSim(mtf,cfg){
           macroBias:tMacroBias,macroStr:tMacroStr,
           h4Conflict:tH4Conflict,
           h1Bias:tH1B,              /* 1H tier bias at trade open */
+          m15Bias:_m15B,            /* 15m tier bias at trade open */
           h1Conflict:tH1Conflict,   /* 1H vs macro conflict flag */
           h4h1Clash:tH4H1Clash      /* direct 4H vs 1H disagreement */
         });
@@ -2296,15 +2314,16 @@ function runSim(mtf,cfg){
       /* HARD BLOCK 1: Strong macro opposing signal direction */
       if(macroOpposes&&macroStr>=40){skippedCascade++;continue;}
 
-      /* HARD BLOCK 2: 4H+1H direct conflict — block when macro has clear direction
-         Root cause of 1H vs 4H disagreement: a 1H BOS opposing 4H trend
-         is a PULLBACK leg inside the 4H move — never enter in that direction. */
+      /* HARD BLOCK 2: 4H+1H direct conflict */
       if(_h4h1Clash){
-        /* If cascade has clear direction (non-neutral) and is at least weak, block */
         if(macroDir!=='NEUTRAL'&&macroStr>=25){skippedCascade++;continue;}
-        /* Even neutral macro: if 4H and 1H directly disagree, skip */
         if(macroDir==='NEUTRAL'&&_h4B!=='NEUTRAL'&&_h1B!=='NEUTRAL'){skippedCascade++;continue;}
       }
+      /* HARD BLOCK 3: 15m vs 1H conflict — the micro entry gate
+         If 1H agrees with cascade but 15m opposes → micro pullback, reduce score */
+      var _m15B=td.m15B||'NEUTRAL';
+      var _m15Conf=td.m15Confirms||(_m15B===macroDir&&macroDir!=='NEUTRAL');
+      var _m15Pull=td.m15IsPullback||((_h1B===macroDir)&&(_m15B!==macroDir)&&_m15B!=='NEUTRAL');
 
       var cascadeBonus=0;
       if(macroAligns){
@@ -2317,10 +2336,14 @@ function runSim(mtf,cfg){
           cascadeBonus+=10;
         /* 1H confirms → additional entry quality boost */
         if(_h1Confirms)cascadeBonus+=8;
+        /* 15m confirms → final execution quality boost */
+        if(_m15Conf)cascadeBonus+=5;
         /* 4H conflict within trend (pullback) → reduce bonus */
         if(h4Conf)cascadeBonus=Math.floor(cascadeBonus*0.6);
         /* 1H pullback → slight reduction */
         if(td.h1IsPullback)cascadeBonus=Math.floor(cascadeBonus*0.75);
+        /* 15m pullback → smaller reduction */
+        if(_m15Pull)cascadeBonus=Math.floor(cascadeBonus*0.88);
       } else if(macroOpposes){
         /* Weak opposing macro (20-39%) — moderate penalty, allow if very high quality */
         cascadeBonus=-20; /* flat penalty instead of multiply (avoids 0*0.30=0 then -15 = -15 → 0) */
@@ -2415,6 +2438,11 @@ function runSim(mtf,cfg){
       if(_h4h1Clash&&score2>=50){
         score2=Math.min(score2,44);cascadeCapped++;
       }
+      /* 15m micro pullback — soft cap (not hard block, just limits score) */
+      if(_m15Pull&&score2>=52){
+        score2=Math.min(score2,51);/* just below high-gate */
+        cascadeCapped++;
+      }
 
       score2=Math.max(0,Math.min(100,score2));
       tQuality=score2>=65?'high':score2>=45?'medium':'low';
@@ -2444,8 +2472,9 @@ function runSim(mtf,cfg){
       /* SL tightness scales with cascade conflict severity */
       var slMult2=slM2;
       if(macroAligns&&h4Conf&&_h1Pullback)slMult2=slM2*0.70;
-      else if(macroAligns&&h4Conf)    slMult2=slM2*0.78;
+      else if(macroAligns&&h4Conf)        slMult2=slM2*0.78;
       else if(macroAligns&&_h1Pullback)   slMult2=slM2*0.85;
+      else if(macroAligns&&_m15Pull)      slMult2=slM2*0.92; /* 15m pullback: slightly tighter */
       var slDist2=atr2*1.2;
       var slip2=cp*0.0002;
       tMacroBias=macroDir;tMacroStr=macroStr;
@@ -2477,8 +2506,12 @@ function runSim(mtf,cfg){
         tPosSizeEth*=0.65;              /* 4H counter-trend pullback: 65% */
       } else if(_h1Pullback&&!_h1Confirms){
         tPosSizeEth*=0.75;              /* 1H pullback only: 75% */
+      } else if(_h1Confirms&&_m15Pull){
+        tPosSizeEth*=0.90;              /* 5-TF aligned but 15m pulling back: 90% */
+      } else if(_h1Confirms&&_m15Conf){
+        /* Full 6-TF alignment (Yr→Wk→D→4H→1H→15m): full size */
       } else if(_h1Confirms){
-        /* Full 5-TF alignment: full size — no reduction */
+        tPosSizeEth*=0.95;              /* 5-TF aligned, 15m neutral: 95% */
       }
       var maxEth3=(capital*5)/tEntry;
       if(tPosSizeEth>maxEth3)tPosSizeEth=maxEth3;
