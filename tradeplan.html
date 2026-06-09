@@ -1234,14 +1234,15 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
       shortScore += 12;
       shortFactors.push({label:'1H also BEAR → cascade fully aligned (5/5 TFs)', score:12, type:'key'});
     }
-    // Counter-cascade longs tracked via htfBear flag — post-scoring cap applied at end
-    // 1H BULL in BEAR cascade = pullback bounce, NOT a long signal
+    // 1H BULL in BEAR cascade = active pullback phase. HARD BLOCK shorts until 1H confirms BEAR.
+    // SMC rule: Do NOT short while 1H is still bullish. Wait for 1H CHoCH/BOS to BEAR.
     if (oneHB === 'BULL') {
-      shortScore -= 5;
-      shortFactors.push({label:'⚠️ 1H is BULL (pullback in BEAR trend). Wait for 1H→15m both BEAR.', score:-5, type:'warn'});
-      longFactors.push({label:'🚫 1H BULL OVERRIDDEN — macro BEAR cascade. Pullback, not reversal.', score:0, type:'warn'});
+      // 1H actively opposes cascade → crush SHORT score below any threshold
+      shortScore -= 30;
+      shortFactors.push({label:'⛔ 1H is BULL — BEAR cascade pullback phase. NO SHORT until 1H breaks BEAR structure (CHoCH/BOS).', score:-30, type:'warn'});
+      longFactors.push({label:'🚫 1H BULL in BEAR cascade = pullback bounce, not a reversal. Macro BEAR wins.', score:0, type:'warn'});
     }
-    // 15m adds final execution confirmation in BEAR cascade
+    // 15m adds final execution confirmation in BEAR cascade (only matters when 1H already BEAR)
     if (m15B === 'BEAR') {
       shortScore += 6;
       shortFactors.push({label:'15m also BEAR ✅ — full 6-TF cascade aligned (Yr→Wk→D→4H→1H→15m)', score:6, type:'key'});
@@ -1258,13 +1259,15 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
       longScore += 12;
       longFactors.push({label:'1H also BULL → cascade fully aligned (5/5 TFs)', score:12, type:'key'});
     }
-    // Counter-cascade shorts tracked via htfBull flag — post-scoring cap applied at end
+    // 1H BEAR in BULL cascade = active pullback phase. HARD BLOCK longs until 1H confirms BULL.
+    // SMC rule: Do NOT long while 1H is still bearish. Wait for 1H CHoCH/BOS to BULL.
     if (oneHB === 'BEAR') {
-      longScore -= 5;
-      longFactors.push({label:'⚠️ 1H is BEAR (pullback in BULL trend). Wait for 1H to turn BULL before longing.', score:-5, type:'warn'});
-      shortFactors.push({label:'🚫 1H BEAR OVERRIDDEN — macro BULL cascade. Pullback, not reversal.', score:0, type:'warn'});
+      // 1H actively opposes cascade → crush LONG score below any threshold
+      longScore -= 30;
+      longFactors.push({label:'⛔ 1H is BEAR — BULL cascade pullback phase. NO LONG until 1H breaks BULL structure (CHoCH/BOS).', score:-30, type:'warn'});
+      shortFactors.push({label:'🚫 1H BEAR in BULL cascade = pullback dip, not a reversal. Macro BULL wins.', score:0, type:'warn'});
     }
-    // 15m gate in BULL cascade
+    // 15m gate in BULL cascade (only matters when 1H already BULL)
     if (m15B === 'BULL') {
       longScore += 6;
       longFactors.push({label:'15m also BULL ✅ — full 6-TF stack (Yr→Wk→D→4H→1H→15m)', score:6, type:'key'});
@@ -1409,12 +1412,25 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
     }
   }
 
-  // Factor 6: Candle pattern confirmation (STRICT — must align with direction)
+  // Factor 6: Candle pattern confirmation — CASCADE + 1H CONFLICT GATED
+  // Candle patterns only score full weight when 1H agrees with cascade direction.
+  // When 1H actively conflicts, candles carry zero signal weight (they reflect the pullback, not the trade).
   var bearPatterns = ['Shooting Star','Strong Bear'];
   var bullPatterns = ['Hammer','Strong Bull'];
+  var h1AgreesBear = (oneHB === 'BEAR');   /* 1H confirmed bearish → bear patterns meaningful */
+  var h1AgreesBull = (oneHB === 'BULL');   /* 1H confirmed bullish → bull patterns meaningful */
   if (bearPatterns.indexOf(pat4h) > -1 || bearPatterns.indexOf(pat1h) > -1) {
     var best_pat = bearPatterns.indexOf(pat4h)>-1 ? '4H '+pat4h : '1H '+pat1h;
-    shortScore += 12; shortFactors.push({label:'Bearish trigger: '+best_pat, score:12, type:'key'});
+    if (htfBear && h1AgreesBear) {
+      // Full weight: BEAR cascade + 1H BEAR + bearish candle = high-quality entry
+      shortScore += 12; shortFactors.push({label:'Bearish trigger: '+best_pat+' (cascade+1H aligned)', score:12, type:'key'});
+    } else if (!htfBull) {
+      // Partial: cascade neutral or bear but 1H not yet confirmed
+      shortScore += 5; shortFactors.push({label:'Bearish candle: '+best_pat+' (wait for 1H BOS BEAR to confirm)', score:5, type:'warn'});
+    } else {
+      // Counter-cascade: bearish candle in BULL macro = noise
+      shortScore += 2; shortFactors.push({label:'Bearish candle in BULL cascade — noise, not a signal', score:2, type:'warn'});
+    }
   } else if (pat4h.indexOf('Doji') > -1 || pat1h.indexOf('Doji') > -1) {
     shortScore += 4; shortFactors.push({label:'Doji (indecision) at zone', score:4, type:'info'});
     longScore  += 4; longFactors.push({label:'Doji (indecision) at zone', score:4, type:'info'});
@@ -1423,10 +1439,15 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
   }
   if (bullPatterns.indexOf(pat4h) > -1 || bullPatterns.indexOf(pat1h) > -1) {
     var best_patB = bullPatterns.indexOf(pat4h)>-1 ? '4H '+pat4h : '1H '+pat1h;
-    if (!htfBear) {
-      longScore  += 12; longFactors.push({label:'Bullish trigger: '+best_patB, score:12, type:'key'});
+    if (htfBull && h1AgreesBull) {
+      // Full weight: BULL cascade + 1H BULL + bullish candle = high-quality entry
+      longScore  += 12; longFactors.push({label:'Bullish trigger: '+best_patB+' (cascade+1H aligned)', score:12, type:'key'});
+    } else if (!htfBear) {
+      // Partial: cascade neutral or bull but 1H not yet confirmed
+      longScore  += 5; longFactors.push({label:'Bullish candle: '+best_patB+' (wait for 1H BOS BULL to confirm)', score:5, type:'warn'});
     } else {
-      longScore  += 4; longFactors.push({label:'Bullish candle in BEAR cascade — pullback signal only', score:4, type:'warn'});
+      // Counter-cascade: bullish candle in BEAR macro = pullback noise
+      longScore  += 2; longFactors.push({label:'Bullish candle in BEAR cascade — pullback noise, not a long signal', score:2, type:'warn'});
     }
   } else if (bullPatterns.indexOf(pat4h) === -1 && bullPatterns.indexOf(pat1h) === -1) {
     longScore  -= 5; longFactors.push({label:'No bullish trigger candle ('+pat4h+')', score:-5, type:'warn'});
@@ -1461,15 +1482,23 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
     longScore  += 10; longFactors.push({label:'4H+1H both BULL — intraday cascade confirmed', score:10, type:'info'});
   }
 
-  // THE FIX: 4H vs 1H conflict is explicitly named and heavily penalised
+  // Factor 8b: 4H vs 1H conflict — penalise ONLY the counter-cascade direction
+  // When macro=BEAR + 4H=BEAR + 1H=BULL: the LONG is the counter-direction, crush it.
+  // The SHORT is the cascade direction — it was already crushed in Factor 1 (oneHB=BULL → -30).
+  // When macro=BULL + 4H=BULL + 1H=BEAR: the SHORT is counter-direction, crush it.
   if (h4_1h_conflict) {
-    var conflictDir = topDown.fourHBias==='BEAR' ? '4H BEAR vs 1H BULL' : '4H BULL vs 1H BEAR';
-    var resolution  = topDown.fourHBias==='BEAR'
-      ? 'The 1H BULL is a PULLBACK inside the 4H BEAR. Wait for 1H to turn BEAR before shorting.'
-      : 'The 1H BEAR is a PULLBACK inside the 4H BULL. Wait for 1H to turn BULL before longing.';
-    shortScore -= 20; longScore -= 20;
-    shortFactors.push({label:'⛔ '+conflictDir+' CONFLICT: '+resolution, score:-20, type:'warn'});
-    longFactors.push({label:'⛔ '+conflictDir+' CONFLICT: '+resolution, score:-20, type:'warn'});
+    if (topDown.fourHBias === 'BEAR') {
+      // 4H BEAR + 1H BULL: LONG is counter-cascade → block it hard
+      longScore -= 30;
+      longFactors.push({label:'⛔ 4H BEAR + 1H BULL CONFLICT: 1H rally is a pullback inside 4H downtrend. NO LONG. Wait for 1H→BEAR BOS.', score:-30, type:'warn'});
+      // Note: SHORT was already penalised -30 in Factor 1 (oneHB=BULL in BEAR cascade)
+      // Don't double-penalise the cascade direction — we WANT shorts once 1H turns BEAR
+    } else {
+      // 4H BULL + 1H BEAR: SHORT is counter-cascade → block it hard
+      shortScore -= 30;
+      shortFactors.push({label:'⛔ 4H BULL + 1H BEAR CONFLICT: 1H dip is a pullback inside 4H uptrend. NO SHORT. Wait for 1H→BULL BOS.', score:-30, type:'warn'});
+      // Note: LONG was already penalised -30 in Factor 1 (oneHB=BEAR in BULL cascade)
+    }
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -1507,32 +1536,61 @@ function runStrictAnalysis(candles4h, candles1h, candles15m, price, topDown) {
     }
   }
 
-  // Direct 4H vs 1H intraday conflict: HARD BLOCK
-  if (topDown.oneHConflict || topDown.h4h1Clash ||
-      (topDown.fourHBias==='BEAR' && topDown.oneHBias==='BULL') ||
-      (topDown.fourHBias==='BULL' && topDown.oneHBias==='BEAR')) {
-    var conflictingDir = topDown.fourHBias==='BEAR' ? 'long' : 'short';
-    if (conflictingDir === 'long' && longScore >= 60) {
-      longScore = Math.min(longScore, 44);
-      longFactors.push({label:'⛔ LONG blocked: 4H BEAR + 1H BULL = pullback. Wait for 1H→15m both BEAR.', score:0, type:'warn'});
-    } else if (conflictingDir === 'short' && shortScore >= 60) {
-      shortScore = Math.min(shortScore, 44);
-      shortFactors.push({label:'⛔ SHORT blocked: 4H BULL + 1H BEAR = pullback. Wait for 1H→15m both BULL.', score:0, type:'warn'});
+  // ── POST-SCORING 1H CONFLICT HARD BLOCK ──────────────────────────────────────────────────
+  // This is the definitive gate. Even if factors 2-8 accumulated enough points, if 1H is
+  // actively opposing the cascade direction, NO TRADE fires in any direction.
+  //
+  // Rule: 1H must confirm the cascade direction before ANY trade is valid.
+  //   • BEAR cascade + 1H BULL → WAIT. Neither short (not yet confirmed) nor long (counter).
+  //   • BULL cascade + 1H BEAR → WAIT. Neither long (not yet confirmed) nor short (counter).
+  //   Exception: if macroDir is NEUTRAL and 4H+1H both agree, allow reduced trades.
+  // ──────────────────────────────────────────────────────────────────────────────────────────
+  var active1HConflict = (topDown.oneHConflict || topDown.h4h1Clash ||
+    (topDown.fourHBias==='BEAR' && topDown.oneHBias==='BULL') ||
+    (topDown.fourHBias==='BULL' && topDown.oneHBias==='BEAR'));
+
+  if (active1HConflict && macroDir !== 'NEUTRAL') {
+    // Cascade-aligned direction: cap hard below threshold — not ready yet
+    // Counter-cascade direction: already crushed by Factor 1 (-30) + post-cap, but enforce here too
+    if (topDown.fourHBias === 'BEAR') {
+      // 4H BEAR + 1H BULL
+      // Shorts: 1H pullback = wait for 1H BOS BEAR before executing. Cap below threshold.
+      if (shortScore >= 55) {
+        shortScore = Math.min(shortScore, 54);
+        shortFactors.push({label:'⏳ SHORT WAITING: 1H is still BULL (pullback). Score capped until 1H breaks structure BEAR.', score:0, type:'warn'});
+      }
+      // Longs: already crushed by Factor 1 (-30) and cascade cap. Enforce 44 max.
+      if (longScore > 44) {
+        longScore = 44;
+        longFactors.push({label:'⛔ LONG hard-blocked: 4H BEAR + 1H BULL = pullback bounce, not reversal.', score:0, type:'warn'});
+      }
+    } else {
+      // 4H BULL + 1H BEAR
+      // Longs: 1H pullback = wait for 1H BOS BULL before executing. Cap below threshold.
+      if (longScore >= 55) {
+        longScore = Math.min(longScore, 54);
+        longFactors.push({label:'⏳ LONG WAITING: 1H is still BEAR (pullback). Score capped until 1H breaks structure BULL.', score:0, type:'warn'});
+      }
+      // Shorts: already crushed by Factor 1 (-30) and cascade cap. Enforce 44 max.
+      if (shortScore > 44) {
+        shortScore = 44;
+        shortFactors.push({label:'⛔ SHORT hard-blocked: 4H BULL + 1H BEAR = pullback dip, not reversal.', score:0, type:'warn'});
+      }
     }
   }
 
-  // NEW — 15m vs 1H conflict: the finest intraday gate
-  // If 1H agrees with cascade BUT 15m still opposes → micro pullback — cap the signal
-  if (topDown.m15Conflict ||
+  // 15m vs 1H conflict: finest entry gate (only relevant when 1H already agrees with cascade)
+  // If 1H agrees with cascade BUT 15m still opposes → micro pullback — hold for 15m BOS
+  if (!active1HConflict && (topDown.m15Conflict ||
       (topDown.oneHBias==='BULL' && topDown.m15Bias==='BEAR') ||
-      (topDown.oneHBias==='BEAR' && topDown.m15Bias==='BULL')) {
+      (topDown.oneHBias==='BEAR' && topDown.m15Bias==='BULL'))) {
     var m15ConflictDir = topDown.oneHBias==='BULL' ? 'long' : 'short';
     if (m15ConflictDir === 'long' && longScore >= 60) {
-      longScore = Math.min(longScore, 52); /* allow near-threshold but not trigger */
-      longFactors.push({label:'⚠️ 15m is BEAR in 1H BULL trend — micro pullback in progress. Wait for 15m BOS BULL (entry refining).', score:0, type:'warn'});
+      longScore = Math.min(longScore, 58); /* allow near-threshold but not trigger */
+      longFactors.push({label:'⚠️ 15m is BEAR in 1H BULL trend — micro pullback. Wait for 15m BOS BULL before executing.', score:0, type:'warn'});
     } else if (m15ConflictDir === 'short' && shortScore >= 60) {
-      shortScore = Math.min(shortScore, 52);
-      shortFactors.push({label:'⚠️ 15m is BULL in 1H BEAR trend — micro pullback in progress. Wait for 15m BOS BEAR (entry refining).', score:0, type:'warn'});
+      shortScore = Math.min(shortScore, 58);
+      shortFactors.push({label:'⚠️ 15m is BULL in 1H BEAR trend — micro bounce. Wait for 15m BOS BEAR before executing.', score:0, type:'warn'});
     }
   }
 
@@ -1689,7 +1747,7 @@ function updateScalpPanel(result) {
       var h4_1h_clash = h4b!=='NEUTRAL' && h1b!=='NEUTRAL' && h4b!==h1b;
       var filterMsg;
       if(h4_1h_clash){
-        filterMsg='<span style="color:var(--red)">⛔ 4H+1H CONFLICT (4H='+h4b+', 1H='+h1b+'). NO scalp trades until they align. '+(h4b==='BEAR'?'Watch for 1H to turn BEAR → short from supply.':'Watch for 1H to turn BULL → long from demand.')+'</span>';
+        filterMsg='<span style="color:var(--warn)">⏳ 4H+1H CONFLICT (4H='+h4b+', 1H='+h1b+'). NO scalp trades. Engine blocked until 1H confirms. '+(h4b==='BEAR'?'🔑 Wait for 1H CHoCH/BOS BEAR before any short.':'🔑 Wait for 1H CHoCH/BOS BULL before any long.')+'</span>';
       } else if(td.bias==='NEUTRAL'&&h4_1h_match){
         filterMsg='<span style="color:var(--warn)">Macro neutral but 4H+1H both '+h4b+' — limited scalps in '+h4b+' direction only</span>';
       } else if(td.bias==='BULL'){
@@ -1800,11 +1858,14 @@ function updateIntradayPanel(result) {
     var intraConflict = ctx.oneHConflict || ((td.fourHBias==='BEAR'&&td.oneHBias==='BULL')||(td.fourHBias==='BULL'&&td.oneHBias==='BEAR'));
     var noTradeWarn;
     if (intraConflict && dir === 'NEUTRAL') {
-      noTradeWarn = '<div style="margin-top:7px;padding:8px 10px;background:rgba(255,61,90,.1);border-radius:6px;border:1px solid rgba(255,61,90,.3);font-size:.64rem;color:var(--red);line-height:1.6">'
-        + '⛔ <strong>4H vs 1H CONFLICT — NO TRADE</strong><br>'
-        + (td.fourHBias==='BEAR'
-           ? '4H is <strong>BEAR</strong> but 1H is <strong>BULL</strong>. The 1H rally is a <strong>pullback</strong> inside the 4H downtrend.<br>🔑 Wait for: 1H to form a <strong>BEAR BOS</strong>, then short from the 4H supply zone.'
-           : '4H is <strong>BULL</strong> but 1H is <strong>BEAR</strong>. The 1H dip is a <strong>pullback</strong> inside the 4H uptrend.<br>🔑 Wait for: 1H to form a <strong>BULL BOS</strong>, then long from the 4H demand zone.')
+      var _bearConflict4H = td.fourHBias==='BEAR';
+      noTradeWarn = '<div style="margin-top:7px;padding:8px 10px;background:rgba(255,152,0,.09);border-radius:6px;border:1px solid rgba(255,152,0,.4);font-size:.64rem;line-height:1.7">'
+        + '⏳ <strong style="color:var(--warn)">1H CONFLICT — WAITING FOR CONFIRMATION</strong><br>'
+        + (_bearConflict4H
+           ? '<span style="color:var(--text)">4H <strong style="color:var(--red)">BEAR</strong> · 1H <strong style="color:var(--green)">BULL</strong> — 1H pullback phase inside 4H downtrend.</span><br>'
+             + '<span style="color:var(--text2)">🔑 Watch for <strong style="color:var(--red)">1H CHoCH/BOS BEAR</strong> (1H close below swing low). SHORT from 4H supply once 1H confirms BEAR.</span>'
+           : '<span style="color:var(--text)">4H <strong style="color:var(--green)">BULL</strong> · 1H <strong style="color:var(--red)">BEAR</strong> — 1H pullback phase inside 4H uptrend.</span><br>'
+             + '<span style="color:var(--text2)">🔑 Watch for <strong style="color:var(--green)">1H CHoCH/BOS BULL</strong> (1H close above swing high). LONG from 4H demand once 1H confirms BULL.</span>')
         + '</div>';
     } else if (suppressedByBear) {
       noTradeWarn = '<div style="margin-top:7px;padding:8px 10px;background:rgba(255,61,90,.1);border-radius:6px;border:1px solid rgba(255,61,90,.3);font-size:.64rem;color:var(--red);line-height:1.6">'

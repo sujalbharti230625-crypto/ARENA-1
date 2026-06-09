@@ -2311,50 +2311,59 @@ function runSim(mtf,cfg){
       var _h1Confirms=(macroDir==='BULL'&&_h1B==='BULL')||(macroDir==='BEAR'&&_h1B==='BEAR');
       var _h1Pullback=td.h1IsPullback||false;
 
-      /* HARD BLOCK 1: Strong macro opposing signal direction */
-      if(macroOpposes&&macroStr>=40){skippedCascade++;continue;}
+  /* HARD BLOCK 1: Macro opposing signal direction — lower threshold to 25 (was 40)
+     At macroStr 25+, the macro trend is established enough to block counter-trades */
+  if(macroOpposes&&macroStr>=25){skippedCascade++;continue;}
 
-      /* HARD BLOCK 2: 4H+1H direct conflict */
-      if(_h4h1Clash){
-        if(macroDir!=='NEUTRAL'&&macroStr>=25){skippedCascade++;continue;}
-        if(macroDir==='NEUTRAL'&&_h4B!=='NEUTRAL'&&_h1B!=='NEUTRAL'){skippedCascade++;continue;}
-      }
-      /* HARD BLOCK 3: 15m vs 1H conflict — the micro entry gate
-         If 1H agrees with cascade but 15m opposes → micro pullback, reduce score */
-      var _m15B=td.m15B||'NEUTRAL';
-      var _m15Conf=td.m15Confirms||(_m15B===macroDir&&macroDir!=='NEUTRAL');
-      var _m15Pull=td.m15IsPullback||((_h1B===macroDir)&&(_m15B!==macroDir)&&_m15B!=='NEUTRAL');
+  /* HARD BLOCK 2: 4H+1H direct conflict — ALWAYS block regardless of macroStr
+     SMC rule: Never trade when 4H and 1H disagree. Wait for 1H to confirm cascade.
+     This is the core 1H-conflict fix: even weak macro (str<25) cannot produce trades
+     when the 4H and 1H are pointing in opposite directions. */
+  if(_h4h1Clash){skippedCascade++;continue;}
 
-      var cascadeBonus=0;
-      if(macroAligns){
-        /* Full-stack aligned bonus */
-        cascadeBonus=Math.round(macroStr*0.30);
-        /* Extra if all 5 TFs agree */
-        if(td.yrB===macroDir&&td.wkB===macroDir&&td.dB===macroDir&&_h4B===macroDir&&_h1B===macroDir)
-          cascadeBonus+=15;
-        else if(td.yrB===macroDir&&td.wkB===macroDir&&td.dB===macroDir&&_h4B===macroDir)
-          cascadeBonus+=10;
-        /* 1H confirms → additional entry quality boost */
-        if(_h1Confirms)cascadeBonus+=8;
-        /* 15m confirms → final execution quality boost */
-        if(_m15Conf)cascadeBonus+=5;
-        /* 4H conflict within trend (pullback) → reduce bonus */
-        if(h4Conf)cascadeBonus=Math.floor(cascadeBonus*0.6);
-        /* 1H pullback → slight reduction */
-        if(td.h1IsPullback)cascadeBonus=Math.floor(cascadeBonus*0.75);
-        /* 15m pullback → smaller reduction */
-        if(_m15Pull)cascadeBonus=Math.floor(cascadeBonus*0.88);
-      } else if(macroOpposes){
-        /* Weak opposing macro (20-39%) — moderate penalty, allow if very high quality */
-        cascadeBonus=-20; /* flat penalty instead of multiply (avoids 0*0.30=0 then -15 = -15 → 0) */
-      } else {
-        /* Neutral macro — require 4H+1H agreement */
-        if(_h4B===_h1B&&_h4B!=='NEUTRAL'){
-          cascadeBonus=(_h4B==='BULL'&&side2==='long')||(_h4B==='BEAR'&&side2==='short')?5:-12;
-        } else {
-          cascadeBonus=-10; /* neutral + no TF agreement */
-        }
-      }
+  /* HARD BLOCK 3: 1H actively conflicts cascade direction (covers cases where
+     h4h1Clash is false but 1H still opposes the macro trend) */
+  if(macroDir!=='NEUTRAL'&&(
+    (macroDir==='BEAR'&&_h1B==='BULL'&&side2==='short') ||
+    (macroDir==='BULL'&&_h1B==='BEAR'&&side2==='long')
+  )&&macroStr>=20){skippedCascade++;continue;}
+  /* 15m micro-pullback gate (only relevant after all hard blocks passed) */
+  var _m15B=td.m15B||'NEUTRAL';
+  var _m15Conf=td.m15Confirms||(_m15B===macroDir&&macroDir!=='NEUTRAL');
+  var _m15Pull=td.m15IsPullback||((_h1B===macroDir)&&(_m15B!==macroDir)&&_m15B!=='NEUTRAL');
+
+  /* cascadeBonus: reward quality of cascade alignment
+     At this point we know: macro aligned, 1H agrees (hard blocks eliminated mismatches) */
+  var cascadeBonus=0;
+  if(macroAligns){
+  /* Full-stack aligned bonus — proportional to macro strength */
+  cascadeBonus=Math.round(macroStr*0.30);
+  /* All TFs agree — maximum conviction bonus */
+  if(td.yrB===macroDir&&td.wkB===macroDir&&td.dB===macroDir&&_h4B===macroDir&&_h1B===macroDir)
+    cascadeBonus+=15;
+  else if(td.yrB===macroDir&&td.wkB===macroDir&&td.dB===macroDir&&_h4B===macroDir)
+    cascadeBonus+=10;
+  /* 1H confirms → entry quality boost (1H had to agree to reach here, so always true when macroAligns) */
+  if(_h1Confirms)cascadeBonus+=8;
+  /* 15m confirms → final execution quality boost */
+  if(_m15Conf)cascadeBonus+=5;
+  /* 4H pullback within trend → reduce bonus */
+  if(h4Conf)cascadeBonus=Math.floor(cascadeBonus*0.6);
+  /* 1H pullback within trend → slight reduction */
+  if(td.h1IsPullback)cascadeBonus=Math.floor(cascadeBonus*0.75);
+  /* 15m micro pullback → small reduction */
+  if(_m15Pull)cascadeBonus=Math.floor(cascadeBonus*0.88);
+  } else if(macroOpposes){
+  /* macroOpposes AND macroStr<25 reached here (>=25 was hard-blocked above) */
+  cascadeBonus=-20;
+  } else {
+  /* Neutral macro — require 4H+1H agreement (already enforced by hard blocks) */
+  if(_h4B===_h1B&&_h4B!=='NEUTRAL'){
+    cascadeBonus=(_h4B==='BULL'&&side2==='long')||(_h4B==='BEAR'&&side2==='short')?5:-12;
+  } else {
+    cascadeBonus=-10;
+  }
+  }
       score2+=cascadeBonus;
 
       /* S/D Zone — CASCADE-GATED (mirrors tradeplan.html F3 fix) */
